@@ -1,4 +1,4 @@
-# @expo2dev/biome-react-kit
+# @ovt2/biome-react-kit
 
 Shared Biome lint/format/check preset for our React apps.
 
@@ -8,7 +8,7 @@ One command installs Biome and the kit, writes `biome.json`, adds the
 `check`/`check:fix` scripts, and wires up the pre-commit hook and CI workflow:
 
 ```sh
-bunx @expo2dev/biome-react-kit init
+bunx @ovt2/biome-react-kit init
 ```
 
 Options:
@@ -37,22 +37,22 @@ manager installed it.
 ### Manual setup
 
 ```sh
-bun add -d -E @biomejs/biome @expo2dev/biome-react-kit
+bun add -d -E @biomejs/biome @ovt2/biome-react-kit
 ```
 
 Create `biome.json`:
 
 ```json
-{ "extends": ["@expo2dev/biome-react-kit/biome"] }
+{ "extends": ["@ovt2/biome-react-kit/biome"] }
 ```
 
 ## Presets
 
-| Name                                     | Extends path            | Use case                                                                                         |
-| ---------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| `@expo2dev/biome-react-kit/biome`        | `./presets/base.json`   | Default: recommended rules + React domain, warns on unused code/console.                         |
-| `@expo2dev/biome-react-kit/biome/strict` | `./presets/strict.json` | Base rules raised to errors (unused code, `any`, non-null assertions, console, exhaustive deps). |
-| `@expo2dev/biome-react-kit/biome/next`   | `./presets/next.json`   | Base preset plus the Next.js lint domain.                                                        |
+| Name                                 | Extends path            | Use case                                                                                         |
+| ------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `@ovt2/biome-react-kit/biome`        | `./presets/base.json`   | Default: recommended rules + React domain, warns on unused code/console.                         |
+| `@ovt2/biome-react-kit/biome/strict` | `./presets/strict.json` | Base rules raised to errors (unused code, `any`, non-null assertions, console, exhaustive deps). |
+| `@ovt2/biome-react-kit/biome/next`   | `./presets/next.json`   | Base preset plus the Next.js lint domain.                                                        |
 
 Presets intentionally don't set `files.includes` — setting it in your own
 `biome.json` would _replace_ the kit's, not merge with it. For Next.js apps,
@@ -60,7 +60,7 @@ add your own ignores:
 
 ```json
 {
-  "extends": ["@expo2dev/biome-react-kit/biome/next"],
+  "extends": ["@ovt2/biome-react-kit/biome/next"],
   "files": { "includes": ["**", "!**/.next", "!**/out", "!**/next-env.d.ts"] }
 }
 ```

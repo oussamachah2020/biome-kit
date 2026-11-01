@@ -1,5 +1,5 @@
 {
-  "name": "@expo2dev/biome-react-kit",
+  "name": "@ovt2/biome-react-kit",
   "version": "2.1.0",
   "description": "Shared Biome lint/format/check preset for React apps",
   "license": "MIT",
