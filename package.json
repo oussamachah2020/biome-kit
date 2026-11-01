@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "biome-react-kit": "./bin/cli.mjs"
+    "biome-react-kit": "bin/cli.mjs"
   },
   "exports": {
     "./biome": "./presets/base.json",
