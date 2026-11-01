@@ -53,17 +53,8 @@ script. The `check`/`check:fix` scripts that `init` writes into your
 above are a convenience for anyone who already has Bun and wants one
 consistent command across projects.
 
-### Manual setup
-
-```sh
-bun add -d -E @biomejs/biome @ovt2/biome-react-kit
-```
-
-Create `biome.json`:
-
-```json
-{ "extends": ["@ovt2/biome-react-kit/biome"] }
-```
+See the [Command reference](#command-reference) below for every flag and
+manual (non-CLI) setup path.
 
 ## Presets
 
@@ -91,10 +82,91 @@ Add scripts:
 "check:fix": "biome check --write ."
 ```
 
-## Pre-commit hook
+## Command reference
 
-Run Biome on staged files before every commit so formatting and fixable lint
-issues never reach the repo:
+Every command this kit provides, for every case.
+
+### `init` — one-time project setup
+
+```sh
+# Default: base preset, installs husky + CI workflow
+bunx @ovt2/biome-react-kit init
+
+# Pick a different preset
+bunx @ovt2/biome-react-kit init --preset strict
+bunx @ovt2/biome-react-kit init --preset next
+
+# Skip the pre-commit hook (no husky install, no .husky/pre-commit, no "prepare" script)
+bunx @ovt2/biome-react-kit init --no-hooks
+
+# Skip the GitHub Actions workflow (no .github/workflows/biome.yml)
+bunx @ovt2/biome-react-kit init --no-ci
+
+# Don't install anything — just print the install command and write the
+# files that don't depend on packages being present yet
+bunx @ovt2/biome-react-kit init --skip-install
+
+# Combine flags freely
+bunx @ovt2/biome-react-kit init --preset next --no-ci
+bunx @ovt2/biome-react-kit init --preset strict --no-hooks --no-ci --skip-install
+
+# Show usage
+bunx @ovt2/biome-react-kit -h
+bunx @ovt2/biome-react-kit --help
+```
+
+`init` is always safe to re-run: it never overwrites an existing
+`biome.json`/`biome.jsonc`, script, `.husky/pre-commit`, or
+`.github/workflows/biome.yml` — it just prints `!` warnings for whatever
+already exists.
+
+### `check` / `check:fix` / `ci` — run Biome without calling it directly
+
+```sh
+# Lint/format-check the whole project
+bunx @ovt2/biome-react-kit check
+
+# Auto-fix what's fixable
+bunx @ovt2/biome-react-kit check:fix
+
+# CI-formatted output (GitHub Actions annotations), used by the generated workflow
+bunx @ovt2/biome-react-kit ci
+
+# Any of the three accept specific paths instead of defaulting to "."
+bunx @ovt2/biome-react-kit check src/
+bunx @ovt2/biome-react-kit check:fix src/components/Button.tsx
+bunx @ovt2/biome-react-kit ci src/ tests/
+```
+
+These fail with a clear message instead of a stack trace if Biome isn't
+installed yet in the current project (run `init` first).
+
+### Scripts `init` writes into your `package.json`
+
+```sh
+npm run check       # or: pnpm check / yarn check / bun run check
+npm run check:fix    # or: pnpm check:fix / yarn check:fix / bun run check:fix
+```
+
+These call the locally installed `biome` binary directly — no Bun required,
+regardless of which package manager your project uses.
+
+### Manual setup (without the CLI)
+
+```sh
+# Install Biome + the kit yourself
+bun add -d -E @biomejs/biome @ovt2/biome-react-kit
+npm install --save-dev --save-exact @biomejs/biome @ovt2/biome-react-kit
+pnpm add --save-dev --save-exact @biomejs/biome @ovt2/biome-react-kit
+yarn add --dev --exact @biomejs/biome @ovt2/biome-react-kit
+
+# Then create biome.json by hand, extending whichever preset you want:
+# { "extends": ["@ovt2/biome-react-kit/biome"] }          — base
+# { "extends": ["@ovt2/biome-react-kit/biome/strict"] }   — strict
+# { "extends": ["@ovt2/biome-react-kit/biome/next"] }     — next
+```
+
+### Manual pre-commit hook (without `init`)
 
 ```sh
 bun add -d husky
@@ -111,7 +183,7 @@ git update-index --again
 Commits with unfixable errors (e.g. an unsafe-fix-only rule set to error)
 will be blocked until you resolve them.
 
-## Migrating from ESLint/Prettier
+### Migrating an existing config
 
 ```sh
 bunx biome migrate eslint --write
