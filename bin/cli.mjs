@@ -64,19 +64,32 @@ const PACKAGE_MANAGERS = {
   },
 };
 
-const HELP = `Usage: bunx ${KIT_NAME} init [options]
+const BIOME_SUBCOMMANDS = {
+  check: (paths) => ["check", ...paths],
+  "check:fix": (paths) => ["check", "--write", ...paths],
+  ci: (paths) => ["ci", "--reporter=github", ...paths],
+};
 
-Options:
+const HELP = `Usage: bunx ${KIT_NAME} <command> [options]
+
+Commands:
+  init [options]   Set up Biome, scripts, hooks, and CI in the current project
+  check [paths]     Run biome check (defaults to .)
+  check:fix [paths] Run biome check --write (defaults to .)
+  ci [paths]        Run biome ci --reporter=github (defaults to .)
+
+init options:
   --preset <base|strict|next>  Which preset to extend (default: base)
   --no-hooks                   Skip husky + pre-commit hook setup
   --no-ci                      Skip the GitHub Actions workflow
   --skip-install                Print install commands instead of running them
   -h, --help                   Show this help
 
-The package manager (bun, npm, pnpm, or yarn) is detected from the
-"packageManager" field in package.json or from whichever lockfile is
-present in the current directory. Bun is used as the fallback when
-neither is found.
+check / check:fix / ci run the Biome binary already installed in this
+project's node_modules — you never need to call biome yourself. The
+package manager (bun, npm, pnpm, or yarn) used by \`init\` is detected
+from the "packageManager" field in package.json or from whichever
+lockfile is present. Bun is used as the fallback when neither is found.
 `;
 
 function fail(message) {
@@ -124,8 +137,25 @@ if (values.help) {
 }
 
 const command = positionals[0] ?? "init";
+const cwd = process.cwd();
+
+if (command in BIOME_SUBCOMMANDS) {
+  const biome = binPath(cwd, "biome");
+  if (!existsSync(biome)) {
+    fail(`Biome isn't installed in this project. Run: bunx ${KIT_NAME} init`);
+  }
+  const extraPaths = positionals.slice(1);
+  const biomeArgs = BIOME_SUBCOMMANDS[command](extraPaths.length ? extraPaths : ["."]);
+  try {
+    await $`${biome} ${biomeArgs}`.cwd(cwd);
+  } catch (error) {
+    process.exit(error.exitCode ?? 1);
+  }
+  process.exit(0);
+}
+
 if (command !== "init") {
-  fail(`Unknown command "${command}". Usage: bunx ${KIT_NAME} init [options]`);
+  fail(`Unknown command "${command}". Usage: bunx ${KIT_NAME} <init|check|check:fix|ci> [options]`);
 }
 
 if (!(values.preset in PRESET_PATHS)) {
@@ -134,7 +164,6 @@ if (!(values.preset in PRESET_PATHS)) {
   );
 }
 
-const cwd = process.cwd();
 const pkgPath = join(cwd, "package.json");
 if (!existsSync(pkgPath)) {
   fail("No package.json found in the current directory.");

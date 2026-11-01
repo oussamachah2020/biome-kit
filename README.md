@@ -34,6 +34,25 @@ found. The pre-commit hook always calls the locally installed
 `node_modules/.bin/biome`, so it works the same regardless of which package
 manager installed it.
 
+## CLI commands
+
+Beyond `init`, the kit's own CLI wraps the Biome binary it already installed
+in your project, so you never have to know Biome's own flags:
+
+```sh
+bunx @ovt2/biome-react-kit check            # biome check .
+bunx @ovt2/biome-react-kit check:fix        # biome check --write .
+bunx @ovt2/biome-react-kit ci               # biome ci --reporter=github .
+bunx @ovt2/biome-react-kit check src/foo.ts # pass specific paths through
+```
+
+These require Bun to invoke (same as `init`), since the CLI itself is a Bun
+script. The `check`/`check:fix` scripts that `init` writes into your
+`package.json` call `biome` directly instead, so `npm run check` (or
+`pnpm`/`yarn run check`) stays Bun-free for everyday use — the CLI commands
+above are a convenience for anyone who already has Bun and wants one
+consistent command across projects.
+
 ### Manual setup
 
 ```sh
