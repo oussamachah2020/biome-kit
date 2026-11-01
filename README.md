@@ -37,14 +37,21 @@ manager installed it.
 ## CLI commands
 
 Beyond `init`, the kit's own CLI wraps the Biome binary it already installed
-in your project, so you never have to know Biome's own flags:
+in your project, so you never have to know Biome's own flags. Once it's
+installed, use the short `biome-kit` alias instead of the full package name
+— `bunx` resolves it from `node_modules/.bin` without touching the network:
 
 ```sh
-bunx @ovt2/biome-react-kit check            # biome check .
-bunx @ovt2/biome-react-kit check:fix        # biome check --write .
-bunx @ovt2/biome-react-kit ci               # biome ci --reporter=github .
-bunx @ovt2/biome-react-kit check src/foo.ts # pass specific paths through
+bunx biome-kit check            # biome check .
+bunx biome-kit check:fix        # biome check --write .
+bunx biome-kit ci               # biome ci --reporter=github .
+bunx biome-kit check src/foo.ts # pass specific paths through
 ```
+
+(The full name `@ovt2/biome-react-kit` still works everywhere `biome-kit`
+does — it's the same binary under two names. You only _need_ the full name
+once, for the very first `init`, since `bunx` has to resolve that from the
+registry before anything is installed locally.)
 
 These require Bun to invoke (same as `init`), since the CLI itself is a Bun
 script. The `check`/`check:fix` scripts that `init` writes into your
@@ -122,20 +129,23 @@ already exists.
 
 ### `check` / `check:fix` / `ci` — run Biome without calling it directly
 
+`biome-kit` is the short alias for `@ovt2/biome-react-kit`, installed
+alongside the full name — use whichever you prefer:
+
 ```sh
 # Lint/format-check the whole project
-bunx @ovt2/biome-react-kit check
+bunx biome-kit check
 
 # Auto-fix what's fixable
-bunx @ovt2/biome-react-kit check:fix
+bunx biome-kit check:fix
 
 # CI-formatted output (GitHub Actions annotations), used by the generated workflow
-bunx @ovt2/biome-react-kit ci
+bunx biome-kit ci
 
 # Any of the three accept specific paths instead of defaulting to "."
-bunx @ovt2/biome-react-kit check src/
-bunx @ovt2/biome-react-kit check:fix src/components/Button.tsx
-bunx @ovt2/biome-react-kit ci src/ tests/
+bunx biome-kit check src/
+bunx biome-kit check:fix src/components/Button.tsx
+bunx biome-kit ci src/ tests/
 ```
 
 These fail with a clear message instead of a stack trace if Biome isn't

@@ -90,6 +90,10 @@ project's node_modules — you never need to call biome yourself. The
 package manager (bun, npm, pnpm, or yarn) used by \`init\` is detected
 from the "packageManager" field in package.json or from whichever
 lockfile is present. Bun is used as the fallback when neither is found.
+
+Once installed (after \`init\`), use the shorter alias for every command
+except the first install: \`bunx biome-kit check\`, \`bunx biome-kit
+check:fix\`, \`bunx biome-kit ci\`.
 `;
 
 function fail(message) {
