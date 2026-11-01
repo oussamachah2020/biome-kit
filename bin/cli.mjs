@@ -70,6 +70,17 @@ const BIOME_SUBCOMMANDS = {
   ci: (paths) => ["ci", "--reporter=github", ...paths],
 };
 
+// Checked in order; the first match wins. Only "next" has its own Biome
+// lint domain — the others are still React under the hood, so they map to
+// the "base" preset, but we name what we found instead of guessing silently.
+const FRAMEWORK_DETECTORS = [
+  { label: "Next.js", preset: "next", deps: ["next"] },
+  { label: "TanStack Start", preset: "base", deps: ["@tanstack/react-start", "@tanstack/start"] },
+  { label: "React Router (framework mode)", preset: "base", deps: ["@react-router/dev"] },
+  { label: "Remix", preset: "base", deps: ["@remix-run/react", "@remix-run/node"] },
+  { label: "React", preset: "base", deps: ["react"] },
+];
+
 const HELP = `Usage: bunx ${KIT_NAME} <command> [options]
 
 Commands:
@@ -79,11 +90,17 @@ Commands:
   ci [paths]        Run biome ci --reporter=github (defaults to .)
 
 init options:
-  --preset <base|strict|next>  Which preset to extend (default: base)
+  --preset <base|strict|next>  Which preset to extend (default: auto-detected)
   --no-hooks                   Skip husky + pre-commit hook setup
   --no-ci                      Skip the GitHub Actions workflow
   --skip-install                Print install commands instead of running them
   -h, --help                   Show this help
+
+Without --preset, init reads your package.json dependencies and picks for
+you: Next.js -> "next" preset; React, TanStack Start, React Router
+(framework mode), or Remix -> "base" preset (they're all React under the
+hood, and only Next.js has its own Biome lint domain). "strict" is never
+auto-selected — pass --preset strict explicitly when you want it.
 
 check / check:fix / ci run the Biome binary already installed in this
 project's node_modules — you never need to call biome yourself. The
@@ -118,6 +135,16 @@ function detectPackageManager(cwd, pkg) {
   return "bun";
 }
 
+function detectPreset(pkg) {
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  for (const detector of FRAMEWORK_DETECTORS) {
+    if (detector.deps.some((dep) => dep in deps)) {
+      return { preset: detector.preset, label: detector.label };
+    }
+  }
+  return { preset: "base", label: null };
+}
+
 function binPath(cwd, name) {
   return join(cwd, "node_modules", ".bin", name);
 }
@@ -125,7 +152,7 @@ function binPath(cwd, name) {
 const { values, positionals } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
-    preset: { type: "string", default: "base" },
+    preset: { type: "string" },
     "no-hooks": { type: "boolean", default: false },
     "no-ci": { type: "boolean", default: false },
     "skip-install": { type: "boolean", default: false },
@@ -162,7 +189,7 @@ if (command !== "init") {
   fail(`Unknown command "${command}". Usage: bunx ${KIT_NAME} <init|check|check:fix|ci> [options]`);
 }
 
-if (!(values.preset in PRESET_PATHS)) {
+if (values.preset !== undefined && !(values.preset in PRESET_PATHS)) {
   fail(
     `Invalid preset "${values.preset}". Valid presets: ${Object.keys(PRESET_PATHS).join(", ")}.`,
   );
@@ -177,6 +204,17 @@ const pkg = await Bun.file(pkgPath).json();
 const pmName = detectPackageManager(cwd, pkg);
 const pm = PACKAGE_MANAGERS[pmName];
 ok(`Detected package manager: ${pmName}`);
+
+let preset = values.preset;
+if (preset === undefined) {
+  const detected = detectPreset(pkg);
+  preset = detected.preset;
+  if (detected.label) {
+    ok(`Detected ${detected.label} — using preset "${preset}"`);
+  } else {
+    warn(`No known framework detected — using preset "${preset}" (pass --preset to choose)`);
+  }
+}
 
 const devPackages = ["@biomejs/biome", `${KIT_NAME}@${KIT_VERSION}`];
 if (!values["no-hooks"]) devPackages.push("husky");
@@ -196,7 +234,7 @@ if (values["skip-install"]) {
 
 const biomeJsonPath = join(cwd, "biome.json");
 const biomeJsoncPath = join(cwd, "biome.jsonc");
-const extendsSpecifier = `${KIT_NAME}/${PRESET_PATHS[values.preset]}`;
+const extendsSpecifier = `${KIT_NAME}/${PRESET_PATHS[preset]}`;
 
 if (existsSync(biomeJsonPath) || existsSync(biomeJsoncPath)) {
   warn(`biome.json already exists — add this to its "extends": "${extendsSpecifier}"`);
@@ -205,7 +243,7 @@ if (existsSync(biomeJsonPath) || existsSync(biomeJsoncPath)) {
     $schema: "./node_modules/@biomejs/biome/configuration_schema.json",
     extends: [extendsSpecifier],
   };
-  if (values.preset === "next") {
+  if (preset === "next") {
     config.files = { includes: ["**", "!**/.next", "!**/out", "!**/next-env.d.ts"] };
   }
   await Bun.write(biomeJsonPath, `${JSON.stringify(config, null, 2)}\n`);

@@ -13,13 +13,31 @@ bunx @ovt2/biome-react-kit init
 
 Options:
 
-| Flag              | Effect                                             |
-| ----------------- | -------------------------------------------------- |
-| `--preset <name>` | `base` (default), `strict`, or `next`              |
-| `--no-hooks`      | Skip husky + the pre-commit hook                   |
-| `--no-ci`         | Skip the GitHub Actions workflow                   |
-| `--skip-install`  | Print the install commands instead of running them |
-| `-h, --help`      | Show usage                                         |
+| Flag              | Effect                                                 |
+| ----------------- | ------------------------------------------------------ |
+| `--preset <name>` | `base`, `strict`, or `next` — overrides auto-detection |
+| `--no-hooks`      | Skip husky + the pre-commit hook                       |
+| `--no-ci`         | Skip the GitHub Actions workflow                       |
+| `--skip-install`  | Print the install commands instead of running them     |
+| `-h, --help`      | Show usage                                             |
+
+Without `--preset`, `init` reads your `package.json` dependencies and picks
+the preset for you:
+
+| Found in dependencies                             | Preset used |
+| ------------------------------------------------- | ----------- |
+| `next`                                            | `next`      |
+| `@tanstack/react-start`, `@tanstack/start`        | `base`      |
+| `@react-router/dev` (React Router framework mode) | `base`      |
+| `@remix-run/react`, `@remix-run/node`             | `base`      |
+| `react` (no framework above)                      | `base`      |
+| none of the above                                 | `base`      |
+
+Only Next.js has its own Biome lint domain, so it's the only framework that
+changes which preset gets used — the others are still React under the hood
+and `base` already covers them. `init` says what it detected (or that it
+detected nothing) either way. `strict` is never auto-selected — pass
+`--preset strict` explicitly when you want it.
 
 `init` never overwrites an existing `biome.json`/`biome.jsonc`, script, hook,
 or workflow file — running it again is safe and only reports what's missing.
@@ -96,10 +114,11 @@ Every command this kit provides, for every case.
 ### `init` — one-time project setup
 
 ```sh
-# Default: base preset, installs husky + CI workflow
+# Auto-detects the preset from your dependencies, installs husky + CI workflow
 bunx @ovt2/biome-react-kit init
 
-# Pick a different preset
+# Force a specific preset instead of auto-detecting
+bunx @ovt2/biome-react-kit init --preset base
 bunx @ovt2/biome-react-kit init --preset strict
 bunx @ovt2/biome-react-kit init --preset next
 
