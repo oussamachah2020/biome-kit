@@ -1,0 +1,45 @@
+{
+  "name": "@expo2dev/biome-react-kit",
+  "version": "2.1.0",
+  "description": "Shared Biome lint/format/check preset for React apps",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "biome-react-kit": "./bin/cli.mjs"
+  },
+  "exports": {
+    "./biome": "./presets/base.json",
+    "./biome/strict": "./presets/strict.json",
+    "./biome/next": "./presets/next.json",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "presets",
+    "templates",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "biome check .",
+    "check:fix": "biome check --write ."
+  },
+  "peerDependencies": {
+    "@biomejs/biome": ">=2.2.0 <3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "bun": ">=1.2"
+  },
+  "keywords": [
+    "biome",
+    "react",
+    "lint",
+    "format"
+  ],
+  "author": "Expo2Dev"
+}

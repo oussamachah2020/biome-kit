@@ -1,0 +1,10 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+  "extends": ["./base.json"],
+  "linter": {
+    "domains": {
+      "react": "recommended",
+      "next": "recommended"
+    }
+  }
+}
