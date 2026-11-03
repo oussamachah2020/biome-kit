@@ -88,10 +88,22 @@ Commands:
   check [paths]     Run biome check (defaults to .)
   check:fix [paths] Run biome check --write (defaults to .)
   ci [paths]        Run biome ci --reporter=github (defaults to .)
+  commit [options]  Guided commit (alias: c): asks step by step, then commits as a
+                    Conventional Commit. Flags: --dry-run, --retry, --no-retry,
+                    --write-message-to-file <f>, -l <n>; git flags go after --
+  check-commit      Validate commit messages (--message, --commit-msg-file,
+                    --rev-range, -d, --allow-abort, --allowed-prefixes, -l)
+  ui [options]      Open the local dashboard: run checks, review errors and
+                    proposed fixes as a diff, apply fixes per file
+
+ui options:
+  --port <n>                   Port to listen on (default: 4321)
+  --no-open                    Don't open the browser automatically
 
 init options:
   --preset <base|strict|next>  Which preset to extend (default: auto-detected)
   --no-hooks                   Skip husky + pre-commit hook setup
+  --no-commit-lint             Skip the commit-message hooks (commit-msg, prepare-commit-msg, pre-push)
   --no-ci                      Skip the GitHub Actions workflow
   --skip-install                Print install commands instead of running them
   -h, --help                   Show this help
@@ -108,9 +120,9 @@ package manager (bun, npm, pnpm, or yarn) used by \`init\` is detected
 from the "packageManager" field in package.json or from whichever
 lockfile is present. Bun is used as the fallback when neither is found.
 
-Once installed (after \`init\`), use the shorter alias for every command
-except the first install: \`bunx biome-kit check\`, \`bunx biome-kit
-check:fix\`, \`bunx biome-kit ci\`.
+Once installed (after \`init\`), use the short \`preflight\` command for
+everything except the first install: \`bunx preflight check\`, \`bunx preflight
+check:fix\`, \`bunx preflight ci\`.
 `;
 
 function fail(message) {
@@ -149,26 +161,38 @@ function binPath(cwd, name) {
   return join(cwd, "node_modules", ".bin", name);
 }
 
+// Everything after a bare "--" belongs to the subcommand (e.g. `commit -- -a -S`
+// hands "-a -S" to git commit), so it never reaches our own option parsing.
+const rawArgs = Bun.argv.slice(2);
+const doubleDash = rawArgs.indexOf("--");
+const ownArgs = doubleDash < 0 ? rawArgs : rawArgs.slice(0, doubleDash);
+const passthroughArgs = doubleDash < 0 ? [] : rawArgs.slice(doubleDash + 1);
+
 const { values, positionals } = parseArgs({
-  args: Bun.argv.slice(2),
+  args: ownArgs,
   options: {
     preset: { type: "string" },
     "no-hooks": { type: "boolean", default: false },
     "no-ci": { type: "boolean", default: false },
+    "no-commit-lint": { type: "boolean", default: false },
     "skip-install": { type: "boolean", default: false },
+    port: { type: "string" },
+    "no-open": { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
   },
   allowPositionals: true,
   strict: false,
 });
 
-if (values.help) {
+const command = positionals[0] ?? "init";
+const cwd = process.cwd();
+const commandArgs = ownArgs.slice(ownArgs.indexOf(command) + 1);
+
+// `commit -h` and `check-commit -h` show their own help; everything else the main one.
+if (values.help && !["commit", "c", "check-commit"].includes(command)) {
   console.log(HELP);
   process.exit(0);
 }
-
-const command = positionals[0] ?? "init";
-const cwd = process.cwd();
 
 if (command in BIOME_SUBCOMMANDS) {
   const biome = binPath(cwd, "biome");
@@ -185,8 +209,40 @@ if (command in BIOME_SUBCOMMANDS) {
   process.exit(0);
 }
 
+if (command === "commit" || command === "c") {
+  const { runCommit } = await import("./commit-cli.mjs");
+  process.exit(await runCommit({ argv: commandArgs, gitArgs: passthroughArgs, cwd }));
+}
+
+if (command === "check-commit") {
+  const { main } = await import("./check-commit.mjs");
+  process.exit(await main(commandArgs, cwd));
+}
+
+if (command === "ui") {
+  const biome = binPath(cwd, "biome");
+  if (!existsSync(biome)) {
+    fail(`Biome isn't installed in this project. Run: bunx ${KIT_NAME} init`);
+  }
+  const { startUi } = await import("./ui-server.mjs");
+  const uiPkgPath = join(cwd, "package.json");
+  const uiPkg = existsSync(uiPkgPath) ? await Bun.file(uiPkgPath).json() : {};
+  await startUi({
+    cwd,
+    biome,
+    pkg: uiPkg,
+    pmName: detectPackageManager(cwd, uiPkg),
+    kitDir: KIT_DIR,
+    port: values.port === undefined ? 4321 : Number(values.port),
+    open: !values["no-open"],
+  });
+  await new Promise(() => {});
+}
+
 if (command !== "init") {
-  fail(`Unknown command "${command}". Usage: bunx ${KIT_NAME} <init|check|check:fix|ci> [options]`);
+  fail(
+    `Unknown command "${command}". Usage: bunx ${KIT_NAME} <init|check|check:fix|ci|commit|check-commit|ui> [options]`,
+  );
 }
 
 if (values.preset !== undefined && !(values.preset in PRESET_PATHS)) {
@@ -293,14 +349,24 @@ if (!values["no-hooks"]) {
     warn("No .git directory found — skipping husky hook setup");
   } else {
     const huskyDir = join(cwd, ".husky");
-    const hookPath = join(huskyDir, "pre-commit");
-    if (existsSync(hookPath)) {
-      warn(".husky/pre-commit already exists — left untouched");
-    } else {
+    const hooks = ["pre-commit"];
+    if (!values["no-commit-lint"]) hooks.push("commit-msg", "prepare-commit-msg", "pre-push");
+    let wroteHook = false;
+
+    for (const hook of hooks) {
+      const hookPath = join(huskyDir, hook);
+      if (existsSync(hookPath)) {
+        warn(`.husky/${hook} already exists — left untouched`);
+        continue;
+      }
       await $`mkdir -p ${huskyDir}`.quiet();
-      await Bun.write(hookPath, await Bun.file(join(KIT_DIR, "templates", "pre-commit")).text());
+      await Bun.write(hookPath, await Bun.file(join(KIT_DIR, "templates", hook)).text());
       await $`chmod 755 ${hookPath}`.quiet();
-      ok("Wrote .husky/pre-commit");
+      ok(`Wrote .husky/${hook}`);
+      wroteHook = true;
+    }
+
+    if (wroteHook) {
       if (values["skip-install"]) {
         warn("Skipped: run `node_modules/.bin/husky` to finish git hooks setup");
       } else {
@@ -326,6 +392,17 @@ if (!values["no-ci"]) {
   if (existsSync(ciPath)) {
     warn(".github/workflows/biome.yml already exists — left untouched");
   } else {
+    // Catches commits that skipped the local hooks (--no-verify, GUI clients, fresh clones).
+    const withCommitCheck = !values["no-commit-lint"] && !values["no-hooks"];
+    const commitCheckCheckout = withCommitCheck ? "\n        with:\n          fetch-depth: 0" : "";
+    const commitCheckStep = withCommitCheck
+      ? [
+          "",
+          "      - name: Check commit messages",
+          "        if: github.event_name == 'pull_request'",
+          "        run: node node_modules/preflight-kit/bin/check-commit.mjs --rev-range origin/${{ github.base_ref }}..HEAD",
+        ].join("\n")
+      : "";
     const workflow = `name: Biome
 
 on:
@@ -338,8 +415,8 @@ jobs:
   biome:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-${pm.setupSteps.join("\n")}
+      - uses: actions/checkout@v4${commitCheckCheckout}
+${pm.setupSteps.join("\n")}${commitCheckStep}
       - run: ${pm.runCheckCi}
 `;
     await $`mkdir -p ${workflowsDir}`.quiet();

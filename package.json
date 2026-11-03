@@ -1,12 +1,12 @@
 {
-  "name": "@ovt2/biome-react-kit",
-  "version": "2.4.0",
-  "description": "Shared Biome lint/format/check preset for React apps",
+  "name": "preflight-kit",
+  "version": "2.5.0",
+  "description": "Pre-push checks for React apps: shared Biome preset, local lint and CI dashboard",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "biome-react-kit": "bin/cli.mjs",
-    "biome-kit": "bin/cli.mjs"
+    "preflight": "bin/cli.mjs",
+    "preflight-kit": "bin/cli.mjs"
   },
   "exports": {
     "./biome": "./presets/base.json",
@@ -17,6 +17,7 @@
   "files": [
     "bin",
     "presets",
+    "ui",
     "templates",
     "README.md"
   ],
@@ -37,6 +38,7 @@
     "bun": ">=1.2"
   },
   "keywords": [
+    "preflight",
     "biome",
     "react",
     "lint",

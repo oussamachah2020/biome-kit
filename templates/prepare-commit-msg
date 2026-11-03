@@ -1,0 +1,2 @@
+[ -f node_modules/preflight-kit/bin/prepare-commit-msg.mjs ] || exit 0
+node node_modules/preflight-kit/bin/prepare-commit-msg.mjs "$1" "$2"

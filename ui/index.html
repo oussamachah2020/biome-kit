@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Preflight</title>
+<script>
+  try {
+    const saved = localStorage.getItem("preflight-theme");
+    if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
+  } catch {}
+</script>
+<style>
+  :root {
+    --bg: #fafaf9; --panel: #ffffff; --row-hover: #f5f5f4; --row-sel: #efeeed; --text: #1c1917; --muted: #78716c; --border: #e7e5e4;
+    --err: #b91c1c; --warn: #b45309; --info: #1d4ed8; --ok: #15803d; --err-row: #fdf2f2;
+    --add-bg: #e6ffec; --add-fg: #116329; --del-bg: #ffebe9; --del-fg: #82071e;
+    --accent: #1c1917; --accent-fg: #fafaf9;
+  }
+  :root { color-scheme: light; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0c0a09; --panel: #1c1917; --row-hover: #24201e; --row-sel: #2b2724; --text: #f5f5f4; --muted: #a8a29e; --border: #292524;
+      --err: #f87171; --warn: #fbbf24; --info: #60a5fa; --ok: #4ade80; --err-row: #231414;
+      --add-bg: #0f2d1a; --add-fg: #7ee787; --del-bg: #3a1618; --del-fg: #ffa198;
+      --accent: #f5f5f4; --accent-fg: #0c0a09;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0c0a09; --panel: #1c1917; --row-hover: #24201e; --row-sel: #2b2724; --text: #f5f5f4; --muted: #a8a29e; --border: #292524;
+      --err: #f87171; --warn: #fbbf24; --info: #60a5fa; --ok: #4ade80; --err-row: #231414;
+      --add-bg: #0f2d1a; --add-fg: #7ee787; --del-bg: #3a1618; --del-fg: #ffa198;
+      --accent: #f5f5f4; --accent-fg: #0c0a09;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  code, pre, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 28px;
+    border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 3; flex-wrap: wrap; }
+  h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  .spacer { flex: 1; }
+  button { font: inherit; border: 1px solid var(--border); background: var(--panel); color: var(--text);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  button.theme { padding: 6px 10px; line-height: 1; font-size: 16px; }
+  button.icon { padding: 4px 10px; border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; }
+  button.icon:hover:not(:disabled) { color: var(--text); }
+  main { max-width: 1500px; margin: 0 auto; padding: 24px 28px 60px; }
+  .badge { font-size: 12px; padding: 1px 9px; border-radius: 99px; border: 1px solid var(--border); color: var(--muted); }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px; }
+  .stat b { display: block; font-size: 40px; line-height: 1.1; font-weight: 650; letter-spacing: -0.02em; }
+  .stat span { display: block; margin-top: 6px; color: var(--muted); font-size: 14px; }
+  .stat.err b { color: var(--err); } .stat.warn b { color: var(--warn); } .stat.ok b { color: var(--ok); }
+
+  .toolbar { display: flex; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .toolbar input { flex: 1; min-width: 220px; max-width: 420px; font: inherit; color: var(--text); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 8px; padding: 9px 14px; }
+  .toolbar input:focus { outline: 2px solid var(--muted); outline-offset: -1px; }
+  .chips { display: flex; gap: 8px; margin-left: auto; }
+  .chip { border-style: dashed; border-radius: 8px; color: var(--muted); }
+  .chip[aria-pressed="true"] { border-style: solid; color: var(--text); border-color: var(--muted); background: var(--row-sel); }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+  .layout.has-panel { grid-template-columns: minmax(0, 1fr) minmax(420px, 48%); }
+  @media (max-width: 1000px) { .layout.has-panel { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-weight: 600; font-size: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  td { padding: 15px 18px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tbody tr { cursor: pointer; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody tr.has-err { background: var(--err-row); }
+  tbody tr.sel, tbody tr.sel:hover { background: var(--row-sel); }
+  td.path { word-break: break-all; }
+  td.num, th.num { text-align: right; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--muted); }
+  .lvl-error { color: var(--err); } .lvl-error .dot { background: var(--err); }
+  .lvl-warning { color: var(--warn); } .lvl-warning .dot { background: var(--warn); }
+  .lvl-information { color: var(--info); } .lvl-information .dot { background: var(--info); }
+  .fixable { color: var(--ok); } .muted { color: var(--muted); }
+  .empty { text-align: center; color: var(--muted); padding: 60px 0; }
+
+  .panel { position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow: auto; }
+  .panel-head { display: flex; align-items: center; gap: 6px; padding: 12px 14px 12px 18px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  .panel-head .path { font-weight: 600; word-break: break-all; flex: 1; }
+  .panel h3 { margin: 0; padding: 14px 18px 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  .diag { display: flex; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .diag .sev { font-weight: 700; font-size: 11px; text-transform: uppercase; min-width: 52px; padding-top: 3px; }
+  .sev.error { color: var(--err); } .sev.warning { color: var(--warn); } .sev.information { color: var(--info); }
+  .diag .meta { color: var(--muted); font-size: 12px; }
+  .note { padding: 12px 18px; color: var(--muted); font-size: 13px; }
+  .diff { font-size: 12.5px; overflow-x: auto; border-top: 1px solid var(--border); }
+  .line { display: flex; white-space: pre; min-width: max-content; }
+  .line .no { width: 40px; text-align: right; padding-right: 8px; color: var(--muted); user-select: none; flex: none; }
+  .line .sign { width: 18px; flex: none; text-align: center; user-select: none; }
+  .line.add { background: var(--add-bg); color: var(--add-fg); }
+  .line.del { background: var(--del-bg); color: var(--del-fg); }
+  .line.gap { color: var(--muted); }
+  .tabs { display: flex; gap: 4px; margin-left: 8px; }
+  .tab { border: 0; background: transparent; color: var(--muted); padding: 6px 14px; border-radius: 8px; font-weight: 600; }
+  .tab[aria-current="page"] { background: var(--row-sel); color: var(--text); }
+  .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .actions[hidden], main[hidden], .panel[hidden] { display: none; }
+  .check { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 14px; cursor: pointer; }
+  .verdict { border-radius: 12px; padding: 16px 22px; margin-bottom: 16px; font-weight: 600; border: 1px solid var(--border); }
+  .verdict.pass { background: var(--add-bg); color: var(--add-fg); border-color: transparent; }
+  .verdict.fail { background: var(--del-bg); color: var(--del-fg); border-color: transparent; }
+  .verdict small { display: block; font-weight: 400; opacity: .85; margin-top: 2px; }
+  td.chk { width: 44px; padding-right: 0; }
+  td.status, td.num { white-space: nowrap; }
+  td.step b { display: block; font-weight: 600; }
+  td.step small { color: var(--muted); }
+  .st-pass { color: var(--ok); } .st-fail { color: var(--err); } .st-run { color: var(--info); } .st-skip, .st-pending { color: var(--muted); }
+  .spin { display: inline-block; width: 11px; height: 11px; margin-right: 8px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -1px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  .log { margin: 0; padding: 14px 18px; font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .error-box { background: var(--del-bg); color: var(--del-fg); padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Preflight</h1>
+  <nav class="tabs">
+    <button type="button" class="tab" data-view="lint" aria-current="page">Lint</button>
+    <button type="button" class="tab" data-view="ci">CI</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="actions" id="lintActions">
+    <span class="badge" id="status">idle</span>
+    <button type="button" id="fixAll" disabled>Apply all fixes</button>
+    <button type="button" id="run" class="primary">Run check</button>
+  </div>
+  <div class="actions" id="ciActions" hidden>
+    <span class="badge" id="ciStatus">idle</span>
+    <label class="check"><input type="checkbox" id="ciStop" checked /> Stop on first failure</label>
+    <button type="button" id="ciRun" class="primary">Run CI</button>
+  </div>
+  <button type="button" id="theme" class="theme" aria-label="Toggle light/dark mode"></button>
+</header>
+<main id="view-lint">
+  <div id="notice"></div>
+  <div class="stats" id="stats"></div>
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="Search file or message…" aria-label="Search" />
+    <div class="chips">
+      <button type="button" class="chip" data-level="all" aria-pressed="true">All</button>
+      <button type="button" class="chip" data-level="error" aria-pressed="false">Errors</button>
+      <button type="button" class="chip" data-level="warning" aria-pressed="false">Warnings</button>
+    </div>
+  </div>
+  <div class="layout" id="layout">
+    <div class="card" id="tableCard"></div>
+    <div class="card panel" id="panel" hidden></div>
+  </div>
+</main>
+
+<main id="view-ci" hidden>
+  <div id="ciNotice"></div>
+  <div id="ciVerdict"></div>
+  <div class="stats" id="ciStats"></div>
+  <div class="layout has-panel" id="ciLayout">
+    <div class="card" id="ciSteps"></div>
+    <div class="card panel" id="ciPanel"></div>
+  </div>
+</main>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = (s) => document.querySelector(s);
+const statusEl = $("#status"), runBtn = $("#run"), fixAllBtn = $("#fixAll");
+let state = null;
+let selected = null; // path
+let query = "";
+let level = "all";
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-preflight-token": TOKEN },
+    body: JSON.stringify(body ?? {}),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const levelName = (sev) => (sev === "information" ? "Info" : sev === "warning" ? "Warn" : "Error");
+
+// Line diff via LCS on trimmed common prefix/suffix; returns hunks with 3 lines of context.
+function diffLines(a, b) {
+  const x = a.split("\n"), y = b.split("\n");
+  let p = 0;
+  while (p < x.length && p < y.length && x[p] === y[p]) p++;
+  let s = 0;
+  while (s < x.length - p && s < y.length - p && x[x.length - 1 - s] === y[y.length - 1 - s]) s++;
+  const xm = x.slice(p, x.length - s), ym = y.slice(p, y.length - s);
+  const n = xm.length, m = ym.length;
+  let ops = [];
+  if (n * m > 4_000_000) {
+    ops = [...xm.map((t) => ["del", t]), ...ym.map((t) => ["add", t])];
+  } else {
+    const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        dp[i][j] = xm[i] === ym[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (xm[i] === ym[j]) { ops.push(["ctx", xm[i]]); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) ops.push(["del", xm[i++]]);
+      else ops.push(["add", ym[j++]]);
+    }
+    while (i < n) ops.push(["del", xm[i++]]);
+    while (j < m) ops.push(["add", ym[j++]]);
+  }
+  const all = [
+    ...x.slice(0, p).map((t) => ["ctx", t]),
+    ...ops,
+    ...x.slice(x.length - s).map((t) => ["ctx", t]),
+  ];
+  // number lines and keep only changes ± 3 context
+  let oldNo = 1, newNo = 1;
+  const rows = all.map(([k, t]) => {
+    const r = { k, t, o: k === "add" ? "" : oldNo, n: k === "del" ? "" : newNo };
+    if (k !== "add") oldNo++;
+    if (k !== "del") newNo++;
+    return r;
+  });
+  const keep = new Array(rows.length).fill(false);
+  rows.forEach((r, i) => {
+    if (r.k !== "ctx") for (let d = -3; d <= 3; d++) if (keep[i + d] !== undefined) keep[i + d] = true;
+  });
+  const out = [];
+  let skipping = false;
+  rows.forEach((r, i) => {
+    if (keep[i]) { out.push(r); skipping = false; }
+    else if (!skipping) { out.push({ k: "gap", t: "···", o: "", n: "" }); skipping = true; }
+  });
+  return out;
+}
+
+
+function worst(f) {
+  if (f.diagnostics.some((d) => d.severity === "error")) return "error";
+  if (f.diagnostics.some((d) => d.severity === "warning")) return "warning";
+  return "information";
+}
+
+function visibleFiles() {
+  if (!state) return [];
+  const q = query.trim().toLowerCase();
+  return state.files.filter((f) => {
+    if (level !== "all" && !f.diagnostics.some((d) => d.severity === level)) return false;
+    if (!q) return true;
+    return f.path.toLowerCase().includes(q) || f.diagnostics.some((d) => d.message.toLowerCase().includes(q) || d.category.toLowerCase().includes(q));
+  });
+}
+
+function renderDiff(f) {
+  if (f.diff === undefined || f.diff === "loading") return `<div class="note">Loading proposed fix…</div>`;
+  if (f.diff.error) return `<div class="note">Couldn't load the fix: ${esc(f.diff.error)}</div>`;
+  if (!f.diff.fixable) return `<div class="note">No automatic fix available — these need a manual change.</div>`;
+  const rows = diffLines(f.diff.original, f.diff.fixed);
+  const html = rows.map((r) => {
+    const sign = r.k === "add" ? "+" : r.k === "del" ? "−" : "";
+    return `<div class="line mono ${r.k}"><span class="no">${r.o}</span><span class="no">${r.n}</span><span class="sign">${sign}</span><span>${esc(r.t)}</span></div>`;
+  }).join("");
+  return `<div class="diff">${html}</div>`;
+}
+
+function renderStats() {
+  const s = state?.summary;
+  const cards = [
+    ["err", s?.errors ?? "–", "Errors"],
+    ["warn", s?.warnings ?? "–", "Warnings"],
+    ["", state?.totalFiles ?? "–", "Files with issues"],
+    ["ok", state ? `${state.seconds}s` : "–", "Check time"],
+  ];
+  $("#stats").innerHTML = cards.map(([c, v, l]) => `<div class="stat ${c}"><b>${v}</b><span>${l}</span></div>`).join("");
+}
+
+function renderTable() {
+  const files = visibleFiles();
+  const card = $("#tableCard");
+  if (!state) { card.innerHTML = `<div class="empty">Click “Run check” to lint this project.</div>`; return; }
+  if (state.files.length === 0) { card.innerHTML = `<div class="empty">✔ No issues found.</div>`; return; }
+  if (files.length === 0) { card.innerHTML = `<div class="empty">No files match your filters.</div>`; return; }
+  card.innerHTML = `<table><thead><tr><th>File</th><th>Level</th><th class="num">Issues</th><th>Fix</th></tr></thead><tbody>${files.map((f) => {
+    const w = worst(f);
+    const fix = f.diff === undefined || f.diff === "loading" ? '<span class="muted">…</span>' : f.diff.fixable ? '<span class="fixable">Fixable</span>' : '<span class="muted">Manual</span>';
+    return `<tr data-path="${esc(f.path)}" class="${w === "error" ? "has-err" : ""} ${f.path === selected ? "sel" : ""}">
+      <td class="path mono">${esc(f.path)}</td>
+      <td class="lvl-${w}"><span class="dot"></span>${levelName(w)}</td>
+      <td class="num">${f.diagnostics.length}</td><td>${fix}</td></tr>`;
+  }).join("")}</tbody></table>`;
+}
+
+function renderPanel() {
+  const panel = $("#panel"), layout = $("#layout");
+  const files = visibleFiles();
+  const idx = files.findIndex((f) => f.path === selected);
+  const f = idx >= 0 ? files[idx] : null;
+  panel.hidden = !f;
+  layout.classList.toggle("has-panel", !!f);
+  if (!f) return;
+  panel.innerHTML = `<div class="panel-head">
+      <span class="path mono">${esc(f.path)}</span>
+      ${f.diff?.fixable ? '<button type="button" data-act="fix">Apply fix</button>' : ""}
+      <button type="button" class="icon" data-act="prev" aria-label="Previous file" ${idx === 0 ? "disabled" : ""}>↑</button>
+      <button type="button" class="icon" data-act="next" aria-label="Next file" ${idx === files.length - 1 ? "disabled" : ""}>↓</button>
+      <button type="button" class="icon" data-act="close" aria-label="Close">✕</button></div>
+    <h3>${plural(f.diagnostics.length, "issue")}</h3>
+    ${f.diagnostics.map((d) => `<div class="diag">
+      <span class="sev ${esc(d.severity)}">${esc(levelName(d.severity))}</span>
+      <div><div>${esc(d.category === "format" ? "File isn't formatted to the project style (see the diff below)." : d.message)}</div>
+      <div class="meta mono">${esc(d.category)}${d.start?.line ? ` · line ${d.start.line}:${d.start.column}` : ""}</div></div></div>`).join("")}
+    <h3>Proposed fix</h3>${renderDiff(f)}`;
+}
+
+function render() {
+  renderStats();
+  renderTable();
+  renderPanel();
+  const n = state?.files.length ?? 0;
+  fixAllBtn.disabled = n === 0;
+  fixAllBtn.textContent = n ? `Apply all fixes (${plural(n, "file")})` : "Apply all fixes";
+  $("#notice").innerHTML = state?.truncated
+    ? `<div class="error-box">Showing the first ${n} of ${state.totalFiles} files. “Apply all fixes” only touches the files shown.</div>` : "";
+}
+
+async function ensureDiff(f) {
+  if (!f || f.diff !== undefined) return;
+  f.diff = "loading";
+  render();
+  try { f.diff = await api("/api/diff", { file: f.path }); }
+  catch (e) { f.diff = { error: e.message }; }
+  render();
+}
+
+function select(path) {
+  selected = path;
+  render();
+  ensureDiff(state.files.find((f) => f.path === path));
+}
+
+async function run() {
+  runBtn.disabled = true;
+  const t0 = Date.now();
+  const tick = setInterval(() => { statusEl.textContent = `checking… ${Math.round((Date.now() - t0) / 1000)}s`; }, 500);
+  statusEl.textContent = "checking…";
+  try {
+    state = await api("/api/check");
+    state.seconds = ((Date.now() - t0) / 1000).toFixed(1);
+    selected = state.files[0]?.path ?? null;
+    statusEl.textContent = state.files.length ? "issues found" : "clean";
+    render();
+    if (selected) ensureDiff(state.files[0]);
+    prefetch(state.files.slice(1, 30));
+  } catch (e) {
+    $("#notice").innerHTML = `<div class="error-box">${esc(e.message)}</div>`;
+    statusEl.textContent = "error";
+  } finally { clearInterval(tick); runBtn.disabled = false; }
+}
+
+// Load diffs in the background, a few at a time, so the Fix column fills in.
+async function prefetch(files) {
+  const queue = files.filter((f) => f.diff === undefined);
+  const worker = async () => {
+    for (let f = queue.shift(); f; f = queue.shift()) {
+      if (f.diff !== undefined) continue;
+      f.diff = "loading";
+      try { f.diff = await api("/api/diff", { file: f.path }); }
+      catch (e) { f.diff = { error: e.message }; }
+      if (state?.files.includes(f)) { renderTable(); if (f.path === selected) renderPanel(); }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+}
+
+async function fix(paths) {
+  statusEl.textContent = "applying…";
+  try { await api("/api/fix", { files: paths }); await run(); }
+  catch (e) { $("#notice").innerHTML = `<div class="error-box">${esc(e.message)}</div>`; statusEl.textContent = "error"; }
+}
+
+function step(delta) {
+  const files = visibleFiles();
+  const i = files.findIndex((f) => f.path === selected);
+  const next = files[i + delta];
+  if (next) select(next.path);
+}
+
+$("#tableCard").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-path]");
+  if (tr) select(tr.dataset.path);
+});
+$("#panel").addEventListener("click", (e) => {
+  const act = e.target.closest("[data-act]")?.dataset.act;
+  if (act === "fix") fix([selected]);
+  else if (act === "prev") step(-1);
+  else if (act === "next") step(1);
+  else if (act === "close") { selected = null; render(); }
+});
+$("#search").addEventListener("input", (e) => { query = e.target.value; render(); });
+document.querySelectorAll(".chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    level = chip.dataset.level;
+    for (const c of document.querySelectorAll(".chip")) c.setAttribute("aria-pressed", String(c === chip));
+    render();
+  });
+});
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); step(1); }
+  else if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); step(-1); }
+  else if (e.key === "Escape") { selected = null; render(); }
+});
+fixAllBtn.addEventListener("click", () => fix(state.files.map((f) => f.path)));
+runBtn.addEventListener("click", run);
+render();
+run();
+
+// ---------------------------------------------------------------- theme
+const themeBtn = $("#theme");
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+const isDark = () => {
+  const t = document.documentElement.dataset.theme;
+  return t ? t === "dark" : systemDark.matches;
+};
+function paintTheme() {
+  themeBtn.textContent = isDark() ? "☀" : "☾";
+  themeBtn.title = isDark() ? "Switch to light mode" : "Switch to dark mode";
+}
+themeBtn.addEventListener("click", () => {
+  const next = isDark() ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("preflight-theme", next); } catch {}
+  paintTheme();
+});
+systemDark.addEventListener("change", paintTheme);
+paintTheme();
+
+// ---------------------------------------------------------------- views
+const views = { lint: { main: $("#view-lint"), actions: $("#lintActions") }, ci: { main: $("#view-ci"), actions: $("#ciActions") } };
+let ciLoaded = false;
+function showView(name) {
+  if (!views[name]) name = "lint";
+  for (const [key, v] of Object.entries(views)) {
+    v.main.hidden = key !== name;
+    v.actions.hidden = key !== name;
+  }
+  for (const tab of document.querySelectorAll(".tab")) {
+    if (tab.dataset.view === name) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
+  }
+  try { history.replaceState(null, "", name === "lint" ? location.pathname + location.search : `#${name}`); } catch {}
+  if (name === "ci" && !ciLoaded) { ciLoaded = true; ciLoad(); }
+}
+for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => showView(tab.dataset.view));
+
+// ---------------------------------------------------------------- CI view
+const ci = { steps: null, enabled: new Set(), results: {}, selected: null, run: null, finished: false, startedAt: 0, seconds: null, error: null, follow: true };
+const ESC = String.fromCharCode(27);
+const BEL = String.fromCharCode(7);
+const ANSI = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]|${ESC}\\][^${BEL}${ESC}]*(?:${BEL}|${ESC}\\\\)`, "g");
+const ciRes = (id) => (ci.results[id] ??= { status: "pending", log: "", ms: null });
+const fmtMs = (ms) => (ms == null ? "–" : ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
+
+async function ciLoad() {
+  try {
+    const { steps } = await api("/api/ci/steps");
+    ci.steps = steps;
+    for (const st of steps) if (st.defaultOn) ci.enabled.add(st.id);
+    ci.selected = steps.find((st) => st.defaultOn)?.id ?? steps[0]?.id ?? null;
+  } catch (e) { ci.error = e.message; }
+  ciRender();
+}
+
+function ciStatusCell(r) {
+  switch (r?.status) {
+    case "running": return '<span class="st-run"><span class="spin"></span>Running</span>';
+    case "pass": return '<span class="st-pass">✔ Passed</span>';
+    case "fail": return '<span class="st-fail">✘ Failed</span>';
+    case "skip": return '<span class="st-skip">– Skipped</span>';
+    case "cancelled": return '<span class="st-skip">■ Stopped</span>';
+    default: return '<span class="st-pending">○ Pending</span>';
+  }
+}
+
+function ciRenderStats() {
+  const all = Object.values(ci.results);
+  const passed = all.filter((r) => r.status === "pass").length;
+  const failed = all.filter((r) => r.status === "fail").length;
+  const total = ci.run ? Math.round((Date.now() - ci.startedAt) / 1000) : ci.seconds;
+  const cards = [
+    ["ok", all.length ? passed : "–", "Passed"],
+    ["err", all.length ? failed : "–", "Failed"],
+    ["", ci.steps ? [...ci.enabled].length : "–", "Steps selected"],
+    ["", total == null ? "–" : `${total}s`, "Total time"],
+  ];
+  $("#ciStats").innerHTML = cards.map(([c, v, l]) => `<div class="stat ${c}"><b>${v}</b><span>${l}</span></div>`).join("");
+}
+
+function ciRenderVerdict() {
+  const el = $("#ciVerdict");
+  if (!ci.finished) { el.innerHTML = ""; return; }
+  const res = ci.steps.filter((st) => ci.results[st.id]);
+  const failed = res.find((st) => ci.results[st.id].status === "fail");
+  const cancelled = res.some((st) => ci.results[st.id].status === "cancelled");
+  if (cancelled) el.innerHTML = `<div class="verdict">Run stopped.</div>`;
+  else if (failed) el.innerHTML = `<div class="verdict fail">CI would fail<small>First failure: ${esc(failed.label)}. Fix it before pushing.</small></div>`;
+  else if (res.length) el.innerHTML = `<div class="verdict pass">All ${plural(res.length, "step")} passed — safe to push<small>Same checks as your CI workflow, run locally.</small></div>`;
+}
+
+function ciRenderTable() {
+  const card = $("#ciSteps");
+  if (!ci.steps) { card.innerHTML = `<div class="empty">Loading steps…</div>`; return; }
+  const running = !!ci.run;
+  card.innerHTML = `<table><thead><tr><th></th><th>Step</th><th>Status</th><th class="num">Time</th></tr></thead><tbody>${ci.steps.map((st) => {
+    const r = ci.results[st.id];
+    return `<tr data-id="${esc(st.id)}" class="${r?.status === "fail" ? "has-err" : ""} ${st.id === ci.selected ? "sel" : ""}">
+      <td class="chk"><input type="checkbox" data-enable="${esc(st.id)}" aria-label="Include ${esc(st.label)}" ${ci.enabled.has(st.id) ? "checked" : ""} ${running ? "disabled" : ""} /></td>
+      <td class="step"><b>${esc(st.label)}</b><small class="mono">${esc(st.display)}</small>${st.note ? `<small> · ${esc(st.note)}</small>` : ""}</td>
+      <td class="status">${ciStatusCell(r)}</td><td class="num muted">${fmtMs(r?.ms)}</td></tr>`;
+  }).join("")}</tbody></table>`;
+}
+
+function ciRenderPanel() {
+  const panel = $("#ciPanel");
+  const st = ci.steps?.find((x) => x.id === ci.selected);
+  if (!st) { panel.innerHTML = `<div class="empty">Select a step to see its output.</div>`; return; }
+  const r = ci.results[st.id];
+  const text = r?.log ? r.log.replace(ANSI, "") : "";
+  const placeholder = r?.status === "running" ? "Waiting for output…" : "No output yet. Run CI to see this step’s logs.";
+  panel.innerHTML = `<div class="panel-head"><span class="path mono">${esc(st.display)}</span>${ciStatusCell(r)}</div>
+    <pre class="log mono" id="ciLog">${text ? esc(text) : `<span class="muted">${placeholder}</span>`}</pre>`;
+  if (r?.status === "running") panel.scrollTop = panel.scrollHeight;
+}
+
+function ciRender() {
+  const busy = !!ci.run;
+  const ciRunBtn = $("#ciRun");
+  ciRunBtn.textContent = busy ? "Stop" : "Run CI";
+  ciRunBtn.classList.toggle("primary", !busy);
+  ciRunBtn.disabled = !ci.steps || (!busy && ci.enabled.size === 0);
+  $("#ciStop").disabled = busy;
+  $("#ciStatus").textContent = busy ? "running…" : !ci.finished ? "idle" : Object.values(ci.results).some((r) => r.status === "fail") ? "failed" : "passed";
+  $("#ciNotice").innerHTML = ci.error ? `<div class="error-box">${esc(ci.error)}</div>` : "";
+  ciRenderStats(); ciRenderVerdict(); ciRenderTable(); ciRenderPanel();
+}
+
+let ciRaf = 0;
+function ciSoftRender() {
+  if (ciRaf) return;
+  ciRaf = requestAnimationFrame(() => { ciRaf = 0; ciRenderPanel(); ciRenderStats(); });
+}
+
+function ciEvent(e) {
+  if (e.type === "start") { ciRes(e.id).status = "running"; if (ci.follow) ci.selected = e.id; ciRender(); }
+  else if (e.type === "log") { ciRes(e.id).log += e.text; if (e.id === ci.selected) ciSoftRender(); }
+  else if (e.type === "end") { const r = ciRes(e.id); r.status = e.code === 0 ? "pass" : "fail"; r.ms = e.ms; if (e.code !== 0 && ci.follow) ci.selected = e.id; ciRender(); }
+  else if (e.type === "skip") { ciRes(e.id).status = "skip"; ciRender(); }
+}
+
+async function ciStart() {
+  const ids = ci.steps.filter((st) => ci.enabled.has(st.id)).map((st) => st.id);
+  if (!ids.length) return;
+  ci.results = {};
+  for (const id of ids) ciRes(id);
+  ci.finished = false; ci.error = null; ci.seconds = null; ci.follow = true; ci.startedAt = Date.now();
+  const ctrl = new AbortController();
+  ci.run = ctrl;
+  const tick = setInterval(ciRenderStats, 1000);
+  ciRender();
+  try {
+    const res = await fetch("/api/ci/run", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-preflight-token": TOKEN },
+      body: JSON.stringify({ steps: ids, stopOnFail: $("#ciStop").checked }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      for (let i = buf.indexOf("\n"); i >= 0; i = buf.indexOf("\n")) {
+        const line = buf.slice(0, i);
+        buf = buf.slice(i + 1);
+        if (line) ciEvent(JSON.parse(line));
+      }
+    }
+  } catch (e) {
+    if (e.name === "AbortError") {
+      for (const r of Object.values(ci.results)) {
+        if (r.status === "running") r.status = "cancelled";
+        else if (r.status === "pending") r.status = "skip";
+      }
+    } else ci.error = e.message;
+  } finally {
+    clearInterval(tick);
+    ci.seconds = Math.round((Date.now() - ci.startedAt) / 1000);
+    ci.run = null; ci.finished = true;
+    ciRender();
+  }
+}
+
+$("#ciRun").addEventListener("click", () => (ci.run ? ci.run.abort() : ciStart()));
+$("#ciSteps").addEventListener("click", (e) => {
+  const box = e.target.closest("[data-enable]");
+  if (box) {
+    if (box.checked) ci.enabled.add(box.dataset.enable); else ci.enabled.delete(box.dataset.enable);
+    ciRender();
+    return;
+  }
+  const tr = e.target.closest("tr[data-id]");
+  if (tr) { ci.selected = tr.dataset.id; ci.follow = false; ciRender(); }
+});
+
+showView(location.hash === "#ci" ? "ci" : "lint");
+</script>
+</body>
+</html>

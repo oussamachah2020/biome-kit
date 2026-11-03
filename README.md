@@ -1,28 +1,135 @@
-# @ovt2/biome-react-kit
+# preflight-kit
 
-Shared Biome lint/format/check preset for our React apps.
+Pre-push checks for React apps. One command sets up a shared
+[Biome](https://biomejs.dev) lint/format preset, git hooks, a Conventional
+Commits workflow and a CI workflow; a local dashboard lets you run the same
+checks your CI will run — and see exactly what would fail — before you push.
 
-## Setup
+**What you get**
 
-One command installs Biome and the kit, writes `biome.json`, adds the
-`check`/`check:fix` scripts, and wires up the pre-commit hook and CI workflow:
+- A shared Biome preset (`base`, `strict`, `next`) with auto-detection.
+- A pre-commit hook that formats and lints staged files.
+- Conventional Commits, enforced and guided: a step-by-step prompt, a
+  commit-message check, a pre-push check and a CI check.
+- A GitHub Actions workflow running `biome ci`.
+- `preflight ui`: a local dashboard with a Lint tab (errors and fixes as a
+  diff) and a CI tab (lint, typecheck, build and tests run locally).
+
+## Contents
+
+- [Quick start](#quick-start)
+- [Commands at a glance](#commands-at-a-glance)
+- [Requirements](#requirements)
+- [`init`](#init--one-time-project-setup)
+- [`check`, `check:fix`, `ci`](#check-checkfix-ci--run-biome)
+- [Commit workflow](#commit-workflow)
+  - [`commit`](#commit--guided-conventional-commit)
+  - [`check-commit`](#check-commit--validate-commit-messages)
+  - [Hooks: how a bad commit gets caught](#hooks-how-a-bad-commit-gets-caught)
+  - [Settings](#settings)
+  - [Skipping a check](#skipping-a-check)
+- [Dashboard (`ui`)](#dashboard-ui)
+- [Presets](#presets)
+- [Manual setup (without the CLI)](#manual-setup-without-the-cli)
+- [Troubleshooting](#troubleshooting)
+- [Reference](#reference)
+- [Developing the kit](#developing-the-kit)
+
+## Quick start
 
 ```sh
-bunx @ovt2/biome-react-kit init
+# 1. In your React project (a git repository with a package.json):
+bunx preflight-kit init
+
+# 2. Fix what Biome can fix, see what's left:
+bunx preflight check:fix
+bunx preflight check
+
+# 3. Open the dashboard to review issues and run your CI checks locally:
+bunx preflight ui
 ```
 
-Options:
+From then on, `git commit` is guided and checked, and every push is checked
+before it leaves your machine.
 
-| Flag              | Effect                                                 |
-| ----------------- | ------------------------------------------------------ |
-| `--preset <name>` | `base`, `strict`, or `next` — overrides auto-detection |
-| `--no-hooks`      | Skip husky + the pre-commit hook                       |
-| `--no-ci`         | Skip the GitHub Actions workflow                       |
-| `--skip-install`  | Print the install commands instead of running them     |
-| `-h, --help`      | Show usage                                             |
+> Use the **package name** `preflight-kit` for the very first `init`. After
+> that the project has the **`preflight`** command (`preflight-kit` also works as
+> a command name). Don't run `bunx preflight` before installing: that name on npm
+> belongs to an unrelated package.
 
-Without `--preset`, `init` reads your `package.json` dependencies and picks
-the preset for you:
+## Commands at a glance
+
+| Command                                          | What it does                                                    |
+| ------------------------------------------------ | --------------------------------------------------------------- |
+| `preflight-kit init [flags]`                     | One-time setup: installs, writes config, scripts, hooks and CI. |
+| `preflight check [paths]`                        | Run `biome check` (lint + format), no changes.                  |
+| `preflight check:fix [paths]`                    | Run `biome check --write`: apply safe fixes.                    |
+| `preflight ci [paths]`                           | Run `biome ci --reporter=github` (what CI runs).                |
+| `preflight commit [flags] [-- <git args>]`       | Guided Conventional Commit (alias `c`).                         |
+| `preflight check-commit [flags]`                 | Validate commit messages (a message, a file or a git range).    |
+| `preflight ui [flags]`                           | Open the local dashboard (Lint + CI tabs).                      |
+| `preflight -h` / `commit -h` / `check-commit -h` | Show help.                                                      |
+
+Every command except `init` runs from the project root. Examples below use
+`bunx preflight …`; if you've installed the kit, `bun run preflight …`,
+`npx preflight …` or `node_modules/.bin/preflight …` work too.
+
+## Requirements
+
+- **Bun 1.2 or newer** to run the CLI (`init`, `check`, `check:fix`, `ci`,
+  `commit`, `check-commit`, `ui`). The CLI is a Bun script.
+- **Your project does not need to use Bun.** `init` detects npm, pnpm, Yarn or
+  Bun and uses that package manager.
+- **Git hooks only need Node** (18 or newer): they're plain Node scripts with no
+  extra dependencies, so teammates don't need Bun to commit or push.
+- **Biome 2.2 up to (not including) 3.** It's a peer dependency; `init` installs it.
+- **Git**, for the commit workflow.
+- **macOS or Linux** for the guided prompt on a plain `git commit` (it reads the
+  terminal through `/dev/tty`). Elsewhere that prompt is skipped; messages are
+  still validated, and `preflight commit` still works. Not tested on Windows.
+
+## `init` — one-time project setup
+
+```sh
+bunx preflight-kit init
+```
+
+`init` installs `@biomejs/biome`, `preflight-kit` and (unless `--no-hooks`)
+`husky`, then writes:
+
+| File / change                 | Purpose                                                           |
+| ----------------------------- | ----------------------------------------------------------------- |
+| `biome.json`                  | Extends the preset. If one exists, it only tells you what to add. |
+| `package.json` scripts        | `check`, `check:fix`, and `prepare` (runs husky).                 |
+| `.husky/pre-commit`           | Biome on staged files, auto-fixing what it can.                   |
+| `.husky/commit-msg`           | Rejects messages that aren't Conventional Commits.                |
+| `.husky/prepare-commit-msg`   | Guided prompt when you run a plain `git commit`.                  |
+| `.husky/pre-push`             | Checks every commit about to be pushed.                           |
+| `.github/workflows/biome.yml` | `biome ci`, plus a commit-message check on pull requests.         |
+
+### Flags
+
+| Flag               | Effect                                                                  |
+| ------------------ | ----------------------------------------------------------------------- |
+| `--preset <name>`  | `base`, `strict` or `next`; overrides auto-detection.                   |
+| `--no-hooks`       | Skip husky and every git hook (also leaves the commit check out of CI). |
+| `--no-commit-lint` | Keep the pre-commit hook; skip the commit-message hooks and CI check.   |
+| `--no-ci`          | Skip the GitHub Actions workflow.                                       |
+| `--skip-install`   | Print the install command instead of running it.                        |
+| `-h`, `--help`     | Show usage.                                                             |
+
+```sh
+bunx preflight-kit init                                   # everything, preset auto-detected
+bunx preflight-kit init --preset strict                   # force a preset
+bunx preflight-kit init --no-commit-lint                  # lint hook only, no commit rules
+bunx preflight-kit init --no-hooks --no-ci                # just biome.json and scripts
+bunx preflight-kit init --skip-install                    # you install packages yourself
+bunx preflight-kit init --preset next --no-ci
+```
+
+### Preset auto-detection
+
+Without `--preset`, `init` reads your `package.json` dependencies:
 
 | Found in dependencies                             | Preset used |
 | ------------------------------------------------- | ----------- |
@@ -34,60 +141,310 @@ the preset for you:
 | none of the above                                 | `base`      |
 
 Only Next.js has its own Biome lint domain, so it's the only framework that
-changes which preset gets used — the others are still React under the hood
-and `base` already covers them. `init` says what it detected (or that it
-detected nothing) either way. `strict` is never auto-selected — pass
-`--preset strict` explicitly when you want it.
+changes which preset is used. `init` says what it detected either way.
+`strict` is never auto-selected; pass `--preset strict` when you want it.
 
-`init` never overwrites an existing `biome.json`/`biome.jsonc`, script, hook,
-or workflow file — running it again is safe and only reports what's missing.
+### Package manager detection
 
-`init` itself always runs through `bunx` (the script is a Bun executable),
-but it doesn't require your project to use Bun: it detects your package
-manager from the `packageManager` field in `package.json`, or otherwise from
-whichever lockfile is present (`bun.lock`, `package-lock.json`,
-`pnpm-lock.yaml`, `yarn.lock`), and uses that package manager's install
-command and CI setup. It falls back to Bun only when none of those is
-found. The pre-commit hook always calls the locally installed
-`node_modules/.bin/biome`, so it works the same regardless of which package
-manager installed it.
+`init` reads the `packageManager` field in `package.json`, otherwise whichever
+lockfile is present (`bun.lock`, `package-lock.json`, `pnpm-lock.yaml`,
+`yarn.lock`), and falls back to Bun. It uses that package manager's install
+command and writes matching CI setup steps.
 
-## CLI commands
+### Safe to re-run
 
-Beyond `init`, the kit's own CLI wraps the Biome binary it already installed
-in your project, so you never have to know Biome's own flags. Once it's
-installed, use the short `biome-kit` alias instead of the full package name
-— `bunx` resolves it from `node_modules/.bin` without touching the network:
+`init` never overwrites an existing `biome.json`/`biome.jsonc`, script, hook or
+workflow file; it prints a `!` warning for whatever already exists and writes
+only what's missing. That makes it the way to **upgrade**: update the package,
+then run `init` again to pick up hooks added in newer versions.
+
+## `check`, `check:fix`, `ci` — run Biome
+
+These wrap the Biome binary installed in your project, so you never need
+Biome's own flags:
 
 ```sh
-bunx biome-kit check            # biome check .
-bunx biome-kit check:fix        # biome check --write .
-bunx biome-kit ci               # biome ci --reporter=github .
-bunx biome-kit check src/foo.ts # pass specific paths through
+bunx preflight check            # biome check .                      (read-only)
+bunx preflight check:fix        # biome check --write .              (applies safe fixes)
+bunx preflight ci               # biome ci --reporter=github .       (CI-formatted output)
+
+bunx preflight check src/                       # limit to paths
+bunx preflight check:fix src/components/Button.tsx
+bunx preflight ci src/ tests/
 ```
 
-(The full name `@ovt2/biome-react-kit` still works everywhere `biome-kit`
-does — it's the same binary under two names. You only _need_ the full name
-once, for the very first `init`, since `bunx` has to resolve that from the
-registry before anything is installed locally.)
+The exit code is Biome's, so they work in scripts and CI. If Biome isn't
+installed yet they say so and point you to `init`.
 
-These require Bun to invoke (same as `init`), since the CLI itself is a Bun
-script. The `check`/`check:fix` scripts that `init` writes into your
-`package.json` call `biome` directly instead, so `npm run check` (or
-`pnpm`/`yarn run check`) stays Bun-free for everyday use — the CLI commands
-above are a convenience for anyone who already has Bun and wants one
-consistent command across projects.
+`init` also adds plain `check` and `check:fix` scripts to `package.json` that
+call `biome` directly, so `npm run check` (or `pnpm`/`yarn`/`bun run check`)
+works without Bun:
 
-See the [Command reference](#command-reference) below for every flag and
-manual (non-CLI) setup path.
+```sh
+npm run check
+npm run check:fix
+```
+
+## Commit workflow
+
+`init` sets up [Conventional Commits](https://www.conventionalcommits.org)
+(`type(scope): subject`), which keeps history readable and works with changelog
+and release tooling. The `commit` and `check-commit` commands and flags follow
+[Commitizen](https://commitizen-tools.github.io/commitizen/) where they overlap
+(`check-commit` is Commitizen's `cz check`; it isn't called `check` because
+`preflight check` runs Biome).
+
+**The format**
+
+```text
+type(scope): subject
+
+optional body
+
+optional footer, e.g. Closes #123
+BREAKING CHANGE: what breaks and how to migrate
+```
+
+- **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`,
+  `build`, `ci`, `chore`, `revert`.
+- The scope is optional. The subject is required, shouldn't end in a period,
+  and the header must stay under 100 characters.
+- A breaking change is marked with `!` (`feat(api)!: …`) plus a
+  `BREAKING CHANGE:` footer.
+- Messages starting with `Merge`, `Revert`, `Pull request`, `fixup!`,
+  `squash!` or `amend!` are left alone.
+
+### `commit` — guided Conventional Commit
+
+```sh
+git add <files>
+bunx preflight commit        # alias: bunx preflight c
+```
+
+Asks seven questions — **type, scope, subject, body, breaking change, footer,
+confirm** — then runs `git commit` with the result, so your pre-commit and
+commit-msg hooks still run. It refuses if nothing is staged. Ctrl+C at any
+step cancels with no commit made. Invalid answers (an empty subject, a trailing
+period, an over-long header) are explained and asked again.
+
+| Flag                             | Effect                                                               |
+| -------------------------------- | -------------------------------------------------------------------- |
+| `--dry-run`                      | Show the message without committing.                                 |
+| `--write-message-to-file <file>` | Write the message to a file (combine with `--dry-run`).              |
+| `--retry`                        | Reuse your last message after a failed commit, without asking again. |
+| `--no-retry`                     | Always ask, even if `retryAfterFailure` is set.                      |
+| `-l`, `--message-length-limit`   | Maximum header length (`0` = no limit).                              |
+| `-h`, `--help`                   | Show help for this command.                                          |
+| `-- <git args>`                  | Everything after `--` is passed to `git commit`.                     |
+
+```sh
+bunx preflight commit                    # ask, then commit the staged changes
+bunx preflight commit -- -a              # stage all tracked changes, then commit
+bunx preflight commit -- -a -S           # …and sign the commit
+bunx preflight commit -- -s              # add a Signed-off-by line
+bunx preflight commit -- -n              # skip git hooks
+bunx preflight commit --dry-run          # just print the message
+bunx preflight commit --dry-run --write-message-to-file msg.txt
+bunx preflight commit -l 72              # stricter header limit for this commit
+```
+
+**Retrying after a failed commit.** If a hook (for example Biome in pre-commit)
+rejects the commit after you've answered the questions, the message is kept.
+Fix the problem, stage the fix, then run `bunx preflight commit --retry` — no
+re-typing. The saved message is cleared once a commit succeeds. Set
+`retryAfterFailure` (see [Settings](#settings)) to reuse it automatically.
+
+### `check-commit` — validate commit messages
+
+Give it exactly one thing to check:
+
+```sh
+bunx preflight check-commit --message "feat: add login"          # a message
+echo "feat: add login" | bunx preflight check-commit             # …or from stdin
+bunx preflight check-commit --commit-msg-file .git/COMMIT_EDITMSG
+bunx preflight check-commit --rev-range origin/main..HEAD        # every commit in a range
+bunx preflight check-commit -d                                   # shorthand for <default branch>..HEAD
+```
+
+| Flag                           | Effect                                                |
+| ------------------------------ | ----------------------------------------------------- |
+| `--message <msg>`              | Check this message (or pipe one in on stdin).         |
+| `--commit-msg-file <path>`     | Check the message in a file.                          |
+| `--rev-range <range>`          | Check every commit in a git range, e.g. `main..HEAD`. |
+| `-d`, `--use-default-range`    | Same as `--rev-range <default branch>..HEAD`.         |
+| `--allow-abort`                | Accept an empty message.                              |
+| `--allowed-prefixes <prefix>`  | Skip messages starting with this (repeatable).        |
+| `-l`, `--message-length-limit` | Maximum header length (`0` = no limit).               |
+
+Exit codes: `0` everything passed, `1` a message was rejected, `2` a usage or
+git error. For a range, the output lists each bad commit with its hash and why.
+
+### Hooks: how a bad commit gets caught
+
+Four layers, so a mistake is stopped somewhere:
+
+| Layer                | Catches                                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `prepare-commit-msg` | A plain `git commit` (no `-m`): walks you through the steps instead of opening an empty editor.                     |
+| `commit-msg`         | `git commit -m "test"`: rejects a message in the wrong format, and says why.                                        |
+| `pre-push`           | Commits that skipped the hooks (`--no-verify`, GUI clients, a fresh clone): checks every commit about to be pushed. |
+| CI (pull requests)   | Anything that still got through: checks the commits in the PR.                                                      |
+
+```text
+$ git commit -m "test"
+
+✘ Commit message rejected
+
+  • The header must look like "type(scope): subject", e.g. "feat(auth): add login form".
+
+  Format:   type(scope): subject
+  Example:  feat(auth): add login form
+  Types:    feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+```
+
+Notes:
+
+- On a plain `git commit` the prompt's answer pre-fills your editor, and the
+  message is validated again afterwards. `git commit --amend`, `-m` and `-F`
+  skip the prompt but not the validation.
+- The prompt steps aside in CI, when `PREFLIGHT_NO_PROMPT` is set, and
+  whenever there's no terminal (editors and GUI clients that commit for you).
+- Hooks run only once git hooks are installed. `init` does this, and teammates
+  get them from `install` through the `prepare` script (`husky`).
+- The pre-push hook checks the commits being pushed (for a new branch: those
+  not already on the remote). Tag pushes and branch deletions are ignored.
+
+### Settings
+
+Optional, in your `package.json`:
+
+```json
+{
+  "preflight": {
+    "commit": {
+      "types": ["feat", "fix", "chore"],
+      "messageLengthLimit": 72,
+      "allowedPrefixes": ["WIP"],
+      "retryAfterFailure": true
+    }
+  }
+}
+```
+
+| Key                  | Meaning                                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `types`              | Allowed types. A list of names, or `{ "feat": "A new feature" }` to give each a description in the prompt. |
+| `messageLengthLimit` | Maximum header length. `0` turns the check off. Default `100`.                                             |
+| `allowedPrefixes`    | Extra message prefixes to skip (added to the built-in ones).                                               |
+| `retryAfterFailure`  | Reuse your last message automatically after a failed commit. Default `false`.                              |
+
+The settings apply to the hooks, `commit` and `check-commit`. Command-line flags
+override them for that run.
+
+### Skipping a check
+
+| To skip…                  | Do this                                                                 |
+| ------------------------- | ----------------------------------------------------------------------- |
+| The commit hooks, once    | `git commit --no-verify` (the pre-push hook and CI still check it).     |
+| The pre-push check, once  | `git push --no-verify` (CI still checks pull requests).                 |
+| Only the guided prompt    | Set `PREFLIGHT_NO_PROMPT=1`.                                            |
+| Commit rules for everyone | Re-run `init --no-commit-lint` on a fresh project, or delete the hooks. |
+
+### Adding the CI step to an existing workflow
+
+`init` adds the commit-message check only to newly generated workflows. To add
+it to one you already have:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+# …after your install step:
+- name: Check commit messages
+  if: github.event_name == 'pull_request'
+  run: node node_modules/preflight-kit/bin/check-commit.mjs --rev-range origin/${{ github.base_ref }}..HEAD
+```
+
+## Dashboard (`ui`)
+
+`preflight ui` starts a local dashboard in your browser so you can see what
+would fail before you push:
+
+```sh
+bunx preflight ui              # opens http://127.0.0.1:4321
+bunx preflight ui --port 5000  # use another port
+bunx preflight ui --no-open    # print the URL without opening a browser
+```
+
+| Flag         | Effect                                |
+| ------------ | ------------------------------------- |
+| `--port <n>` | Port to listen on (default `4321`).   |
+| `--no-open`  | Don't open the browser automatically. |
+
+It needs Biome installed in the project (run `init` first). Press Ctrl+C in the
+terminal to stop it. The ☀/☾ button in the header switches between light and
+dark mode; it follows your system setting until you click it, then remembers
+your choice.
+
+### Lint tab
+
+Runs `biome check` and shows the result:
+
+- **Summary cards:** errors, warnings, files with issues, check time.
+- **File table:** each file's worst level, issue count, and whether Biome can fix
+  it. Rows with errors are tinted. Search by file name, message or rule, and
+  filter by All / Errors / Warnings.
+- **Detail panel:** click a file to see each issue (rule, line and column) and
+  the proposed fix as a red/green diff, like `git diff`. Use ↑/↓ (or `j`/`k`) to
+  move between files and `Esc` to close.
+- **Apply fix** writes the fix for one file; **Apply all fixes** applies them to
+  every listed file in one batch. Nothing is written until you click, and the
+  page re-checks afterwards.
+
+Only Biome's _safe_ fixes are applied (the same ones as `check:fix`). Issues
+with no automatic fix are labelled "Manual". The page lists the first 200 files
+with issues; if there are more, a notice says so and "Apply all fixes" only
+touches the files shown — click it again after the re-check to continue.
+
+### CI tab
+
+Runs the checks your CI would run, locally. The steps are detected from your
+project:
+
+| Step                      | Runs                                                                                                              | On by default |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------- |
+| Install (frozen lockfile) | `bun install --frozen-lockfile`, `npm ci`, or the `pnpm`/`yarn` equivalent                                        | No            |
+| Biome CI (lint + format)  | `biome ci .` — the same check the generated GitHub workflow runs                                                  | Yes           |
+| Typecheck                 | your `typecheck` script (or `type-check`, `check-types`, `tsc`), else `tsc --noEmit` if there's a `tsconfig.json` | Yes           |
+| Build                     | your `build` script                                                                                               | Yes           |
+| Tests                     | your `test` script (skipped if it's npm's "no test specified" placeholder)                                        | Yes           |
+
+Tick the steps you want, then **Run CI**. Steps run in order with `CI=true`,
+and their output streams into the panel as they run. **Stop on first failure**
+(on by default, like real CI) skips the remaining steps after one fails. At the
+end a banner says either "All N steps passed — safe to push" or "CI would
+fail", naming the first failing step. **Stop** cancels the run and kills the
+running process.
+
+This is a script-based simulation, not a replica of your workflow: it runs the
+commands above, not the steps in `.github/workflows/*.yml`, and it doesn't
+reproduce CI's environment variables, secrets or Node version. A pass here is a
+strong signal, not a guarantee.
+
+### Safety
+
+The server listens on `127.0.0.1` only. Every request needs a random token that
+is part of the URL printed at startup — opening the dashboard without it gives a
+403. The page only sends step ids and file paths; the server decides which
+commands run and refuses paths outside the project.
 
 ## Presets
 
-| Name                                 | Extends path            | Use case                                                                                         |
-| ------------------------------------ | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| `@ovt2/biome-react-kit/biome`        | `./presets/base.json`   | Default: recommended rules + React domain, warns on unused code/console.                         |
-| `@ovt2/biome-react-kit/biome/strict` | `./presets/strict.json` | Base rules raised to errors (unused code, `any`, non-null assertions, console, exhaustive deps). |
-| `@ovt2/biome-react-kit/biome/next`   | `./presets/next.json`   | Base preset plus the Next.js lint domain.                                                        |
+| Name                         | Extends path            | Use case                                                                                         |
+| ---------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `preflight-kit/biome`        | `./presets/base.json`   | Default: recommended rules + React domain, warns on unused code/console.                         |
+| `preflight-kit/biome/strict` | `./presets/strict.json` | Base rules raised to errors (unused code, `any`, non-null assertions, console, exhaustive deps). |
+| `preflight-kit/biome/next`   | `./presets/next.json`   | Base preset plus the Next.js lint domain.                                                        |
 
 Presets intentionally don't set `files.includes` — setting it in your own
 `biome.json` would _replace_ the kit's, not merge with it. For Next.js apps,
@@ -95,11 +452,36 @@ add your own ignores:
 
 ```json
 {
-  "extends": ["@ovt2/biome-react-kit/biome/next"],
+  "extends": ["preflight-kit/biome/next"],
   "files": { "includes": ["**", "!**/.next", "!**/out", "!**/next-env.d.ts"] }
 }
 ```
 
+To migrate an existing config into Biome first:
+
+```sh
+bunx biome migrate eslint --write
+bunx biome migrate prettier --write
+```
+
+## Manual setup (without the CLI)
+
+**Install and configure**
+
+```sh
+bun add -d -E @biomejs/biome preflight-kit
+npm install --save-dev --save-exact @biomejs/biome preflight-kit
+pnpm add --save-dev --save-exact @biomejs/biome preflight-kit
+yarn add --dev --exact @biomejs/biome preflight-kit
+```
+
+Create `biome.json`, extending the preset you want:
+
+```json
+{ "extends": ["preflight-kit/biome"] }
+```
+
+(`preflight-kit/biome/strict` or `preflight-kit/biome/next` for the others.)
 Add scripts:
 
 ```json
@@ -107,114 +489,127 @@ Add scripts:
 "check:fix": "biome check --write ."
 ```
 
-## Command reference
-
-Every command this kit provides, for every case.
-
-### `init` — one-time project setup
-
-```sh
-# Auto-detects the preset from your dependencies, installs husky + CI workflow
-bunx @ovt2/biome-react-kit init
-
-# Force a specific preset instead of auto-detecting
-bunx @ovt2/biome-react-kit init --preset base
-bunx @ovt2/biome-react-kit init --preset strict
-bunx @ovt2/biome-react-kit init --preset next
-
-# Skip the pre-commit hook (no husky install, no .husky/pre-commit, no "prepare" script)
-bunx @ovt2/biome-react-kit init --no-hooks
-
-# Skip the GitHub Actions workflow (no .github/workflows/biome.yml)
-bunx @ovt2/biome-react-kit init --no-ci
-
-# Don't install anything — just print the install command and write the
-# files that don't depend on packages being present yet
-bunx @ovt2/biome-react-kit init --skip-install
-
-# Combine flags freely
-bunx @ovt2/biome-react-kit init --preset next --no-ci
-bunx @ovt2/biome-react-kit init --preset strict --no-hooks --no-ci --skip-install
-
-# Show usage
-bunx @ovt2/biome-react-kit -h
-bunx @ovt2/biome-react-kit --help
-```
-
-`init` is always safe to re-run: it never overwrites an existing
-`biome.json`/`biome.jsonc`, script, `.husky/pre-commit`, or
-`.github/workflows/biome.yml` — it just prints `!` warnings for whatever
-already exists.
-
-### `check` / `check:fix` / `ci` — run Biome without calling it directly
-
-`biome-kit` is the short alias for `@ovt2/biome-react-kit`, installed
-alongside the full name — use whichever you prefer:
-
-```sh
-# Lint/format-check the whole project
-bunx biome-kit check
-
-# Auto-fix what's fixable
-bunx biome-kit check:fix
-
-# CI-formatted output (GitHub Actions annotations), used by the generated workflow
-bunx biome-kit ci
-
-# Any of the three accept specific paths instead of defaulting to "."
-bunx biome-kit check src/
-bunx biome-kit check:fix src/components/Button.tsx
-bunx biome-kit ci src/ tests/
-```
-
-These fail with a clear message instead of a stack trace if Biome isn't
-installed yet in the current project (run `init` first).
-
-### Scripts `init` writes into your `package.json`
-
-```sh
-npm run check       # or: pnpm check / yarn check / bun run check
-npm run check:fix    # or: pnpm check:fix / yarn check:fix / bun run check:fix
-```
-
-These call the locally installed `biome` binary directly — no Bun required,
-regardless of which package manager your project uses.
-
-### Manual setup (without the CLI)
-
-```sh
-# Install Biome + the kit yourself
-bun add -d -E @biomejs/biome @ovt2/biome-react-kit
-npm install --save-dev --save-exact @biomejs/biome @ovt2/biome-react-kit
-pnpm add --save-dev --save-exact @biomejs/biome @ovt2/biome-react-kit
-yarn add --dev --exact @biomejs/biome @ovt2/biome-react-kit
-
-# Then create biome.json by hand, extending whichever preset you want:
-# { "extends": ["@ovt2/biome-react-kit/biome"] }          — base
-# { "extends": ["@ovt2/biome-react-kit/biome/strict"] }   — strict
-# { "extends": ["@ovt2/biome-react-kit/biome/next"] }     — next
-```
-
-### Manual pre-commit hook (without `init`)
+**Git hooks**
 
 ```sh
 bun add -d husky
 bunx husky init
 ```
 
-Replace the contents of `.husky/pre-commit` with:
+Put these in `.husky/`:
+
+`.husky/pre-commit`
 
 ```sh
 ./node_modules/.bin/biome check --write --staged --no-errors-on-unmatched --files-ignore-unknown=true
 git update-index --again
 ```
 
-Commits with unfixable errors (e.g. an unsafe-fix-only rule set to error)
-will be blocked until you resolve them.
-
-### Migrating an existing config
+`.husky/commit-msg`
 
 ```sh
-bunx biome migrate eslint --write
-bunx biome migrate prettier --write
+[ -f node_modules/preflight-kit/bin/commit-msg.mjs ] || exit 0
+node node_modules/preflight-kit/bin/commit-msg.mjs "$1"
 ```
+
+`.husky/prepare-commit-msg`
+
+```sh
+[ -f node_modules/preflight-kit/bin/prepare-commit-msg.mjs ] || exit 0
+node node_modules/preflight-kit/bin/prepare-commit-msg.mjs "$1" "$2"
+```
+
+`.husky/pre-push`
+
+```sh
+[ -f node_modules/preflight-kit/bin/pre-push-check.mjs ] || exit 0
+node node_modules/preflight-kit/bin/pre-push-check.mjs "$1" "$2"
+```
+
+Commits with errors Biome can't fix are blocked until you resolve them.
+
+## Troubleshooting
+
+**`bunx preflight …` downloads something strange / "command not found".**
+Before the kit is installed, `bunx preflight` resolves to an unrelated npm
+package. Install first with `bunx preflight-kit init`.
+
+**Hooks don't run.** Run your package manager's install (the `prepare` script
+runs husky), or run `node_modules/.bin/husky` once. Check
+`git config core.hooksPath` prints `.husky/_`.
+
+**The guided prompt doesn't appear on `git commit`.** It's skipped when `CI` or
+`PREFLIGHT_NO_PROMPT` is set, when you pass `-m`/`-F` or amend, when there's no
+terminal (GUI clients, some editors) and on systems without `/dev/tty`. Run
+`bunx preflight commit` for the same steps. The message is validated regardless.
+
+**A commit was rejected and I lost my message.** Use
+`bunx preflight commit --retry` if you committed through `preflight commit`.
+
+**The pre-commit hook blocks my commit.** Biome found an error it can't fix.
+Run `bunx preflight check` to see it, or open `bunx preflight ui`. Fix it and
+commit again.
+
+**Push blocked: "commit message(s) don't follow Conventional Commits".** Reword
+the listed commits with `git rebase -i` (or `git commit --amend` for the latest),
+then push again.
+
+**`init` says a file already exists.** That's expected; `init` never overwrites.
+Delete the file and re-run `init` if you want the kit's version.
+
+**The dashboard shows "Unauthorized" / 403.** Open the exact URL printed when
+`preflight ui` started; it contains a one-time token.
+
+**Biome seems slow on a big project.** Add ignores for build output in your
+`biome.json` (for example `dist`, `.next`, `build`, `coverage`) so Biome doesn't
+scan them.
+
+## Reference
+
+**Environment variables**
+
+| Variable              | Effect                                                                            |
+| --------------------- | --------------------------------------------------------------------------------- |
+| `PREFLIGHT_NO_PROMPT` | Set to any value to skip the guided prompt on `git commit`.                       |
+| `CI`                  | When set, the guided prompt is skipped. The CI tab sets it for the steps it runs. |
+| `NO_COLOR`            | Turns off colors in the prompt.                                                   |
+
+**Exit codes**
+
+| Command                    | Codes                                                                                               |
+| -------------------------- | --------------------------------------------------------------------------------------------------- |
+| `check`, `check:fix`, `ci` | Biome's exit code.                                                                                  |
+| `commit`                   | `0` committed (or dry run), `1` cancelled, git's own exit code if the commit failed, `2` bad flags. |
+| `check-commit`             | `0` valid, `1` rejected, `2` usage or git error.                                                    |
+| `ui`                       | Runs until you stop it.                                                                             |
+
+**Files the kit may create or use**
+
+| Path                                                                | What                                           |
+| ------------------------------------------------------------------- | ---------------------------------------------- |
+| `biome.json`                                                        | Biome config extending a preset.               |
+| `.husky/pre-commit`, `commit-msg`, `prepare-commit-msg`, `pre-push` | Git hooks.                                     |
+| `.github/workflows/biome.yml`                                       | CI workflow.                                   |
+| `.git/preflight-commit-msg`                                         | Your last message, kept after a failed commit. |
+
+## Developing the kit
+
+To try a local build in a test app before publishing:
+
+```sh
+# In the kit repo:
+npm pack --pack-destination /tmp/preflight-pack     # builds preflight-kit-<version>.tgz
+
+# In a throwaway app (a git repo with a package.json):
+bun add --dev --exact @biomejs/biome husky /tmp/preflight-pack/preflight-kit-<version>.tgz
+node_modules/.bin/preflight init --skip-install      # the package isn't on npm yet
+node_modules/.bin/husky
+```
+
+If you rebuild without changing the version, Bun may reuse its cached tarball:
+run `bun pm cache rm`, delete `node_modules/preflight-kit`, and reinstall (or
+bump the version first). `npm pack --dry-run` lists what would be published.
+
+## License
+
+MIT
