@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
+import { binPath, spawnPrepared } from "./proc.mjs";
 
 const MAX_LOG_CHARS = 2_000_000;
 
@@ -30,6 +31,7 @@ function firstScript(scripts, names) {
  * and the browser only ever sends step ids back — never command lines.
  */
 export function detectCiSteps({ cwd, biome, pmName, pkg }) {
+  // `biome` is an argv prefix: [path] or [node, script] (see resolveBiome).
   const scripts = pkg?.scripts ?? {};
   const run = RUN_SCRIPT[pmName] ?? RUN_SCRIPT.npm;
   const steps = [];
@@ -45,7 +47,7 @@ export function detectCiSteps({ cwd, biome, pmName, pkg }) {
   steps.push({
     id: "biome",
     label: "Biome CI (lint + format)",
-    cmd: [biome, "ci", "--colors=off", "."],
+    cmd: [...biome, "ci", "--colors=off", "."],
     display: "biome ci .",
     defaultOn: true,
     note: "The same check the GitHub workflow runs.",
@@ -59,14 +61,11 @@ export function detectCiSteps({ cwd, biome, pmName, pkg }) {
       cmd: run(typecheck),
       defaultOn: true,
     });
-  } else if (
-    existsSync(join(cwd, "tsconfig.json")) &&
-    existsSync(join(cwd, "node_modules", ".bin", "tsc"))
-  ) {
+  } else if (existsSync(`${cwd}/tsconfig.json`) && existsSync(binPath(cwd, "tsc"))) {
     steps.push({
       id: "typecheck",
       label: "Typecheck",
-      cmd: [join(cwd, "node_modules", ".bin", "tsc"), "--noEmit"],
+      cmd: [binPath(cwd, "tsc"), "--noEmit"],
       display: "tsc --noEmit",
       defaultOn: true,
     });
@@ -83,80 +82,87 @@ export function detectCiSteps({ cwd, biome, pmName, pkg }) {
   return steps.map((step) => ({ ...step, display: step.display ?? step.cmd.join(" ") }));
 }
 
+// Kill the step and everything it started (a build tool's child processes too).
+function killTree(child) {
+  if (!child || child.exitCode !== null) return;
+  try {
+    if (process.platform === "win32") child.kill();
+    else process.kill(-child.pid, "SIGTERM");
+  } catch {
+    try {
+      child.kill();
+    } catch {}
+  }
+}
+
 /**
- * Run steps one after another and stream NDJSON events:
+ * Run steps one after another, reporting events through `send`:
  *   start / log / end / skip / done
- * Closing the response (the browser's Stop button) kills the running process.
+ * Aborting `signal` (the browser's Stop button, or the page closing) kills the
+ * running step. Resolves when the run is over; never rejects.
  */
-export function ciStream({ cwd, steps, stopOnFail, release }) {
-  const encoder = new TextEncoder();
-  let proc = null;
-  let cancelled = false;
+export async function runCiSteps({ cwd, steps, stopOnFail, send, signal }) {
+  let child = null;
+  const onAbort = () => killTree(child);
+  signal?.addEventListener("abort", onAbort);
+  let failed = false;
 
-  return new ReadableStream({
-    async start(controller) {
-      const send = (event) => {
-        if (!cancelled) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-      };
-      let failed = false;
-
-      try {
-        for (const step of steps) {
-          if (cancelled) break;
-          if (failed && stopOnFail) {
-            send({ type: "skip", id: step.id });
-            continue;
-          }
-
-          send({ type: "start", id: step.id });
-          const t0 = performance.now();
-          let code = 1;
-          let sent = 0;
-          let truncated = false;
-
-          const pump = async (readable) => {
-            const decoder = new TextDecoder();
-            for await (const chunk of readable) {
-              const text = decoder.decode(chunk, { stream: true });
-              if (sent < MAX_LOG_CHARS) {
-                sent += text.length;
-                send({ type: "log", id: step.id, text });
-              } else if (!truncated) {
-                truncated = true;
-                send({ type: "log", id: step.id, text: "\n… output truncated …\n" });
-              }
-            }
-          };
-
-          try {
-            proc = Bun.spawn(step.cmd, {
-              cwd,
-              env: { ...process.env, CI: "true", NO_COLOR: "1", FORCE_COLOR: "0" },
-              stdin: "ignore",
-              stdout: "pipe",
-              stderr: "pipe",
-            });
-            await Promise.all([pump(proc.stdout), pump(proc.stderr)]);
-            code = await proc.exited;
-          } catch (error) {
-            send({ type: "log", id: step.id, text: `\n${error.message}\n` });
-            code = 127;
-          }
-          proc = null;
-
-          if (cancelled) break;
-          if (code !== 0) failed = true;
-          send({ type: "end", id: step.id, code, ms: Math.round(performance.now() - t0) });
-        }
-        send({ type: "done" });
-      } finally {
-        release();
-        if (!cancelled) controller.close();
+  try {
+    for (const step of steps) {
+      if (signal?.aborted) return;
+      if (failed && stopOnFail) {
+        send({ type: "skip", id: step.id });
+        continue;
       }
-    },
-    cancel() {
-      cancelled = true;
-      proc?.kill();
-    },
-  });
+
+      send({ type: "start", id: step.id });
+      const t0 = performance.now();
+      let sent = 0;
+      let truncated = false;
+
+      const pump = (stream) => {
+        const decoder = new StringDecoder("utf8");
+        stream.on("data", (chunk) => {
+          const text = decoder.write(chunk);
+          if (sent < MAX_LOG_CHARS) {
+            sent += text.length;
+            send({ type: "log", id: step.id, text });
+          } else if (!truncated) {
+            truncated = true;
+            send({ type: "log", id: step.id, text: "\n… output truncated …\n" });
+          }
+        });
+      };
+
+      const code = await new Promise((resolve) => {
+        try {
+          child = spawnPrepared(step.cmd[0], step.cmd.slice(1), {
+            cwd,
+            env: { ...process.env, CI: "true", NO_COLOR: "1", FORCE_COLOR: "0" },
+            stdio: ["ignore", "pipe", "pipe"],
+            detached: process.platform !== "win32", // own process group, so Stop can kill the tree
+          });
+        } catch (error) {
+          send({ type: "log", id: step.id, text: `\n${error.message}\n` });
+          resolve(127);
+          return;
+        }
+        pump(child.stdout);
+        pump(child.stderr);
+        child.on("error", (error) => {
+          send({ type: "log", id: step.id, text: `\n${error.message}\n` });
+          resolve(127);
+        });
+        child.on("close", (exitCode, killedBy) => resolve(exitCode ?? (killedBy ? 143 : 1)));
+      });
+      child = null;
+
+      if (signal?.aborted) return;
+      if (code !== 0) failed = true;
+      send({ type: "end", id: step.id, code, ms: Math.round(performance.now() - t0) });
+    }
+    send({ type: "done" });
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+  }
 }

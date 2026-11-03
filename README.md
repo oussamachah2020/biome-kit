@@ -8,7 +8,8 @@ checks your CI will run — and see exactly what would fail — before you push.
 **What you get**
 
 - A shared Biome preset (`base`, `strict`, `next`) with auto-detection.
-- A pre-commit hook that formats and lints staged files.
+- A pre-commit hook that formats and lints exactly what you staged, and never
+  stages anything you didn't.
 - Conventional Commits, enforced and guided: a step-by-step prompt, a
   commit-message check, a pre-push check and a CI check.
 - A GitHub Actions workflow running `biome ci`.
@@ -21,6 +22,7 @@ checks your CI will run — and see exactly what would fail — before you push.
 - [Commands at a glance](#commands-at-a-glance)
 - [Requirements](#requirements)
 - [`init`](#init--one-time-project-setup)
+- [The pre-commit hook](#the-pre-commit-hook)
 - [`check`, `check:fix`, `ci`](#check-checkfix-ci--run-biome)
 - [Commit workflow](#commit-workflow)
   - [`commit`](#commit--guided-conventional-commit)
@@ -31,6 +33,7 @@ checks your CI will run — and see exactly what would fail — before you push.
 - [Dashboard (`ui`)](#dashboard-ui)
 - [Presets](#presets)
 - [Manual setup (without the CLI)](#manual-setup-without-the-cli)
+- [Limitations](#limitations)
 - [Troubleshooting](#troubleshooting)
 - [Reference](#reference)
 - [Developing lintlane](#developing-lintlane)
@@ -39,22 +42,24 @@ checks your CI will run — and see exactly what would fail — before you push.
 
 ```sh
 # 1. In your React project (a git repository with a package.json):
-bunx lintlane init
+npx lintlane init
 
 # 2. Fix what Biome can fix, see what's left:
-bunx lintlane check:fix
-bunx lintlane check
+npx lintlane check:fix
+npx lintlane check
 
 # 3. Open the dashboard to review issues and run your CI checks locally:
-bunx lintlane ui
+npx lintlane ui
 ```
 
 From then on, `git commit` is guided and checked, and every push is checked
 before it leaves your machine.
 
-> The first `bunx lintlane init` downloads the package. After that it's
-> installed in your project, so `bunx lintlane …` (or `npx lintlane …`,
-> `bun run lintlane …`) runs your local copy without touching the network.
+> Use your package manager's runner for that first command: `npx lintlane init`,
+> `pnpm dlx lintlane init`, `yarn dlx lintlane init` or `bunx lintlane init`. It
+> runs on Node.js, so you don't need Bun. After `init`, lintlane is installed in
+> your project and `npx lintlane …` (or `pnpm exec lintlane …`, `yarn lintlane …`,
+> `bunx lintlane …`) runs your local copy without touching the network.
 
 ## Commands at a glance
 
@@ -70,41 +75,41 @@ before it leaves your machine.
 | `lintlane -h` / `commit -h` / `check-commit -h` | Show help.                                                      |
 
 Every command except `init` runs from the project root. Examples below use
-`bunx lintlane …`; if you've installed it, `bun run lintlane …`,
-`npx lintlane …` or `node_modules/.bin/lintlane …` work too.
+`npx lintlane …`; once lintlane is installed, `pnpm exec lintlane …`,
+`yarn lintlane …`, `bunx lintlane …` and `node_modules/.bin/lintlane …` work too.
 
 ## Requirements
 
-- **Bun 1.2 or newer** to run the CLI (`init`, `check`, `check:fix`, `ci`,
-  `commit`, `check-commit`, `ui`). The CLI is a Bun script.
-- **Your project does not need to use Bun.** `init` detects npm, pnpm, Yarn or
-  Bun and uses that package manager.
-- **Git hooks only need Node** (18 or newer): they're plain Node scripts with no
-  extra dependencies, so teammates don't need Bun to commit or push.
+- **Node.js 22 or newer.** The CLI and the git hooks are plain Node.js scripts
+  with no runtime dependencies. **Bun is not required**, and neither is any
+  particular package manager: `npx`, `pnpm dlx`, `yarn dlx` and `bunx` all work
+  (Bun users can also run lintlane under the Bun runtime).
+- **Your project can use any package manager.** `init` detects npm, pnpm, Yarn
+  or Bun and installs with that one (see [Package manager detection](#package-manager-detection)).
 - **Biome 2.2 up to (not including) 3.** It's a peer dependency; `init` installs it.
-- **Git**, for the commit workflow.
+- **Git**, for the hooks and the commit workflow.
 - **macOS or Linux** for the guided prompt on a plain `git commit` (it reads the
   terminal through `/dev/tty`). Elsewhere that prompt is skipped; messages are
-  still validated, and `lintlane commit` still works. Not tested on Windows.
+  still validated, and `lintlane commit` still works. Windows isn't tested yet.
 
 ## `init` — one-time project setup
 
 ```sh
-bunx lintlane init
+npx lintlane init
 ```
 
 `init` installs `@biomejs/biome`, `lintlane` and (unless `--no-hooks`)
 `husky`, then writes:
 
-| File / change                 | Purpose                                                           |
-| ----------------------------- | ----------------------------------------------------------------- |
-| `biome.json`                  | Extends the preset. If one exists, it only tells you what to add. |
-| `package.json` scripts        | `check`, `check:fix`, and `prepare` (runs husky).                 |
-| `.husky/pre-commit`           | Biome on staged files, auto-fixing what it can.                   |
-| `.husky/commit-msg`           | Rejects messages that aren't Conventional Commits.                |
-| `.husky/prepare-commit-msg`   | Guided prompt when you run a plain `git commit`.                  |
-| `.husky/pre-push`             | Checks every commit about to be pushed.                           |
-| `.github/workflows/biome.yml` | `biome ci`, plus a commit-message check on pull requests.         |
+| File / change                 | Purpose                                                                                                       |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `biome.json`                  | Extends the preset. If one exists, it only tells you what to add.                                             |
+| `package.json` scripts        | `check`, `check:fix`, and `prepare` (runs husky).                                                             |
+| `.husky/pre-commit`           | Biome on the staged files, auto-fixing what it can (safely: see [the pre-commit hook](#the-pre-commit-hook)). |
+| `.husky/commit-msg`           | Rejects messages that aren't Conventional Commits.                                                            |
+| `.husky/prepare-commit-msg`   | Guided prompt when you run a plain `git commit`.                                                              |
+| `.husky/pre-push`             | Checks every commit about to be pushed.                                                                       |
+| `.github/workflows/biome.yml` | `biome ci`, plus a commit-message check on pull requests.                                                     |
 
 ### Flags
 
@@ -118,12 +123,12 @@ bunx lintlane init
 | `-h`, `--help`     | Show usage.                                                             |
 
 ```sh
-bunx lintlane init                                   # everything, preset auto-detected
-bunx lintlane init --preset strict                   # force a preset
-bunx lintlane init --no-commit-lint                  # lint hook only, no commit rules
-bunx lintlane init --no-hooks --no-ci                # just biome.json and scripts
-bunx lintlane init --skip-install                    # you install packages yourself
-bunx lintlane init --preset next --no-ci
+npx lintlane init                                   # everything, preset auto-detected
+npx lintlane init --preset strict                   # force a preset
+npx lintlane init --no-commit-lint                  # lint hook only, no commit rules
+npx lintlane init --no-hooks --no-ci                # just biome.json and scripts
+npx lintlane init --skip-install                    # you install packages yourself
+npx lintlane init --preset next --no-ci
 ```
 
 ### Preset auto-detection
@@ -145,10 +150,25 @@ changes which preset is used. `init` says what it detected either way.
 
 ### Package manager detection
 
-`init` reads the `packageManager` field in `package.json`, otherwise whichever
-lockfile is present (`bun.lock`, `package-lock.json`, `pnpm-lock.yaml`,
-`yarn.lock`), and falls back to Bun. It uses that package manager's install
-command and writes matching CI setup steps.
+`init` picks the package manager in this order, and tells you which signal it used:
+
+1. the `packageManager` field in `package.json` (for example `pnpm@9.1.0`);
+2. a lockfile: `bun.lock` / `bun.lockb`, `package-lock.json` / `npm-shrinkwrap.json`,
+   `pnpm-lock.yaml` or `yarn.lock`;
+3. the tool you launched lintlane with (`npx`, `pnpm dlx`, `yarn dlx`, `bunx`);
+4. otherwise **npm**, which ships with Node.js.
+
+It then uses that package manager's install command (exact dev dependencies) and
+writes matching setup steps into the CI workflow. If the package manager isn't
+installed, `init` stops with a clear message before writing anything; you can
+re-run with `--skip-install` and install the packages yourself.
+
+| Package manager | Install command `init` runs                      |
+| --------------- | ------------------------------------------------ |
+| npm             | `npm install --save-dev --save-exact <packages>` |
+| pnpm            | `pnpm add --save-dev --save-exact <packages>`    |
+| Yarn            | `yarn add --dev --exact <packages>`              |
+| Bun             | `bun add --dev --exact <packages>`               |
 
 ### Safe to re-run
 
@@ -157,19 +177,25 @@ workflow file; it prints a `!` warning for whatever already exists and writes
 only what's missing. That makes it the way to **upgrade**: update the package,
 then run `init` again to pick up hooks added in newer versions.
 
+One exception, for safety: an untouched copy of the **old pre-commit hook**
+(the one that ended with `git update-index --again`, written by lintlane up to
+2.5.1) is replaced with the current one, because the old hook could stage changes
+you hadn't staged. If you edited that hook yourself, `init` leaves it alone and
+warns you to replace it.
+
 ## `check`, `check:fix`, `ci` — run Biome
 
 These wrap the Biome binary installed in your project, so you never need
 Biome's own flags:
 
 ```sh
-bunx lintlane check            # biome check .                      (read-only)
-bunx lintlane check:fix        # biome check --write .              (applies safe fixes)
-bunx lintlane ci               # biome ci --reporter=github .       (CI-formatted output)
+npx lintlane check            # biome check .                      (read-only)
+npx lintlane check:fix        # biome check --write .              (applies safe fixes)
+npx lintlane ci               # biome ci --reporter=github .       (CI-formatted output)
 
-bunx lintlane check src/                       # limit to paths
-bunx lintlane check:fix src/components/Button.tsx
-bunx lintlane ci src/ tests/
+npx lintlane check src/                       # limit to paths
+npx lintlane check:fix src/components/Button.tsx
+npx lintlane ci src/ tests/
 ```
 
 The exit code is Biome's, so they work in scripts and CI. If Biome isn't
@@ -177,12 +203,52 @@ installed yet they say so and point you to `init`.
 
 `init` also adds plain `check` and `check:fix` scripts to `package.json` that
 call `biome` directly, so `npm run check` (or `pnpm`/`yarn`/`bun run check`)
-works without Bun:
+works without lintlane's own command:
 
 ```sh
 npm run check
 npm run check:fix
 ```
+
+## The pre-commit hook
+
+`.husky/pre-commit` runs `node_modules/lintlane/bin/pre-commit.mjs`, which runs
+`biome check --write` on the files you staged and puts the result back into your
+commit. It is built so that **it can never stage, discard or rewrite anything you
+didn't stage**:
+
+- Only the staged files are touched. Unstaged edits to other files and untracked
+  files are never read, formatted or staged.
+- A **partially staged** file (you staged some hunks and kept editing) is handled
+  correctly: Biome sees exactly the staged content, the fix is written to the
+  index, and Biome's changes are merged back into your working copy with a
+  three-way merge, so your unstaged edits survive byte for byte. If your unstaged
+  edit overlaps a formatting change, your working copy is left exactly as you
+  wrote it (the staged content is still formatted), and you get a notice.
+- Nothing is ever staged with `git add`, `git add -A` or `git update-index --again`.
+  Fixed content goes into the index entry of each staged path only.
+- If Biome reports an error it can't fix, the commit is blocked **and every file is
+  put back exactly as it was**: the index, the working tree and HEAD are
+  unchanged. It is all-or-nothing, so a fixable file isn't modified when another
+  staged file fails.
+- Deleted and renamed files, file names with spaces, non-ASCII characters or a
+  leading dash, executable bits, symlinks, files Biome ignores and file types it
+  doesn't know are all handled.
+- Ctrl+C or a termination signal during the run restores your working files
+  before exiting. Your working copy of a partially staged file is saved under
+  `.git/lintlane-backup` while the hook runs.
+
+If the hook is killed in a way that can't be caught (`kill -9`, a power cut), the
+next commit stops with a message instead of continuing, and you recover with:
+
+```sh
+node node_modules/lintlane/bin/pre-commit.mjs --restore
+```
+
+Why not `lint-staged`? It solves the same problem, but it adds a dependency to
+every project, needs its own configuration, and hides your unstaged changes with
+`git stash` while tasks run. This hook has no dependencies, uses the same Biome
+command and ignore rules as `lintlane check`, and never stashes.
 
 ## Commit workflow
 
@@ -217,7 +283,7 @@ BREAKING CHANGE: what breaks and how to migrate
 
 ```sh
 git add <files>
-bunx lintlane commit        # alias: bunx lintlane c
+npx lintlane commit        # alias: npx lintlane c
 ```
 
 Asks seven questions — **type, scope, subject, body, breaking change, footer,
@@ -237,19 +303,19 @@ period, an over-long header) are explained and asked again.
 | `-- <git args>`                  | Everything after `--` is passed to `git commit`.                     |
 
 ```sh
-bunx lintlane commit                    # ask, then commit the staged changes
-bunx lintlane commit -- -a              # stage all tracked changes, then commit
-bunx lintlane commit -- -a -S           # …and sign the commit
-bunx lintlane commit -- -s              # add a Signed-off-by line
-bunx lintlane commit -- -n              # skip git hooks
-bunx lintlane commit --dry-run          # just print the message
-bunx lintlane commit --dry-run --write-message-to-file msg.txt
-bunx lintlane commit -l 72              # stricter header limit for this commit
+npx lintlane commit                    # ask, then commit the staged changes
+npx lintlane commit -- -a              # stage all tracked changes, then commit
+npx lintlane commit -- -a -S           # …and sign the commit
+npx lintlane commit -- -s              # add a Signed-off-by line
+npx lintlane commit -- -n              # skip git hooks
+npx lintlane commit --dry-run          # just print the message
+npx lintlane commit --dry-run --write-message-to-file msg.txt
+npx lintlane commit -l 72              # stricter header limit for this commit
 ```
 
 **Retrying after a failed commit.** If a hook (for example Biome in pre-commit)
 rejects the commit after you've answered the questions, the message is kept.
-Fix the problem, stage the fix, then run `bunx lintlane commit --retry` — no
+Fix the problem, stage the fix, then run `npx lintlane commit --retry` — no
 re-typing. The saved message is cleared once a commit succeeds. Set
 `retryAfterFailure` (see [Settings](#settings)) to reuse it automatically.
 
@@ -258,11 +324,11 @@ re-typing. The saved message is cleared once a commit succeeds. Set
 Give it exactly one thing to check:
 
 ```sh
-bunx lintlane check-commit --message "feat: add login"          # a message
-echo "feat: add login" | bunx lintlane check-commit             # …or from stdin
-bunx lintlane check-commit --commit-msg-file .git/COMMIT_EDITMSG
-bunx lintlane check-commit --rev-range origin/main..HEAD        # every commit in a range
-bunx lintlane check-commit -d                                   # shorthand for <default branch>..HEAD
+npx lintlane check-commit --message "feat: add login"          # a message
+echo "feat: add login" | npx lintlane check-commit             # …or from stdin
+npx lintlane check-commit --commit-msg-file .git/COMMIT_EDITMSG
+npx lintlane check-commit --rev-range origin/main..HEAD        # every commit in a range
+npx lintlane check-commit -d                                   # shorthand for <default branch>..HEAD
 ```
 
 | Flag                           | Effect                                                |
@@ -370,9 +436,9 @@ it to one you already have:
 would fail before you push:
 
 ```sh
-bunx lintlane ui              # opens http://127.0.0.1:4321
-bunx lintlane ui --port 5000  # use another port
-bunx lintlane ui --no-open    # print the URL without opening a browser
+npx lintlane ui              # opens http://127.0.0.1:4321
+npx lintlane ui --port 5000  # use another port
+npx lintlane ui --no-open    # print the URL without opening a browser
 ```
 
 | Flag         | Effect                                |
@@ -459,8 +525,8 @@ add your own ignores:
 To migrate an existing config into Biome first:
 
 ```sh
-bunx biome migrate eslint --write
-bunx biome migrate prettier --write
+npx biome migrate eslint --write
+npx biome migrate prettier --write
 ```
 
 ## Manual setup (without the CLI)
@@ -491,8 +557,8 @@ Add scripts:
 **Git hooks**
 
 ```sh
-bun add -d husky
-bunx husky init
+npm install --save-dev husky      # or: pnpm add -D husky / yarn add -D husky / bun add -d husky
+npx husky init
 ```
 
 Put these in `.husky/`:
@@ -500,9 +566,15 @@ Put these in `.husky/`:
 `.husky/pre-commit`
 
 ```sh
-./node_modules/.bin/biome check --write --staged --no-errors-on-unmatched --files-ignore-unknown=true
-git update-index --again
+if [ -f node_modules/lintlane/bin/pre-commit.mjs ]; then
+  node node_modules/lintlane/bin/pre-commit.mjs
+else
+  echo "lintlane: node_modules/lintlane not found; skipping staged-file checks. Run your package manager's install." >&2
+fi
 ```
+
+Don't write your own `biome check --write --staged` followed by `git add` or
+`git update-index --again`: that stages unstaged edits in partially staged files.
 
 `.husky/commit-msg`
 
@@ -527,12 +599,30 @@ node node_modules/lintlane/bin/pre-push-check.mjs "$1" "$2"
 
 Commits with errors Biome can't fix are blocked until you resolve them.
 
+## Limitations
+
+- **Windows is untested.** Subprocesses are started through `.cmd` shims there, but
+  none of it has been run on Windows. The guided prompt on `git commit` needs
+  `/dev/tty` and is skipped on Windows (`lintlane commit` works).
+- **Yarn:** command generation is covered by tests, but a real Yarn install isn't
+  part of the automated end-to-end run here, so Yarn is the least exercised.
+- **Line-ending and content filters.** The pre-commit hook compares your working
+  files with the raw staged content. If `core.autocrlf`, `.gitattributes` eol rules
+  or a filter makes them differ byte for byte, the file is treated as partially
+  staged: it's formatted in the index and your working copy is left as it was.
+- **Merges.** During a merge commit, the hook also checks the files the merge staged.
+- **Monorepos.** The hook runs from the repository root and uses the repository's
+  `node_modules`; a `package.json` in a subfolder isn't supported yet.
+- **Concurrent edits.** If you save a file in your editor _while_ the hook is
+  running, that file is left as saved and the hook says so.
+
 ## Troubleshooting
 
-**`bunx lintlane …` downloads the package each time, or says "command not found".**
-Outside a project that has it installed, `bunx` fetches `lintlane` from npm.
-Run `bunx lintlane init` in the project first (or install `lintlane` as a dev
-dependency), after which `bunx lintlane …` uses the local copy.
+**`npx lintlane …` downloads the package each time, or says "command not found".**
+Outside a project that has it installed, `npx` (or `pnpm dlx`, `yarn dlx`, `bunx`)
+fetches `lintlane` from npm.
+Run `npx lintlane init` in the project first (or install `lintlane` as a dev
+dependency), after which `npx lintlane …` uses the local copy.
 
 **Hooks don't run.** Run your package manager's install (the `prepare` script
 runs husky), or run `node_modules/.bin/husky` once. Check
@@ -541,14 +631,29 @@ runs husky), or run `node_modules/.bin/husky` once. Check
 **The guided prompt doesn't appear on `git commit`.** It's skipped when `CI` or
 `LINTLANE_NO_PROMPT` is set, when you pass `-m`/`-F` or amend, when there's no
 terminal (GUI clients, some editors) and on systems without `/dev/tty`. Run
-`bunx lintlane commit` for the same steps. The message is validated regardless.
+`npx lintlane commit` for the same steps. The message is validated regardless.
 
 **A commit was rejected and I lost my message.** Use
-`bunx lintlane commit --retry` if you committed through `lintlane commit`.
+`npx lintlane commit --retry` if you committed through `lintlane commit`.
 
 **The pre-commit hook blocks my commit.** Biome found an error it can't fix.
-Run `bunx lintlane check` to see it, or open `bunx lintlane ui`. Fix it and
-commit again.
+Run `npx lintlane check` to see it, or open `npx lintlane ui`. Fix it and
+commit again. Your files were left exactly as they were.
+
+**"An earlier lintlane run was interrupted".** The hook was killed before it could
+put your working files back. Run
+`node node_modules/lintlane/bin/pre-commit.mjs --restore`, then commit again.
+
+**My unstaged edit was reformatted / not reformatted.** The hook only formats what
+you staged. When it formats a partially staged file it merges those changes into
+your working copy without touching your unstaged edit. If your edit overlaps the
+formatting change, your file is left exactly as you wrote it. Stage the file
+fully, or run `npx lintlane check:fix`, to format it.
+
+**`npx lintlane init` fails with "pnpm was not found" (or yarn, bun).** The project
+says it uses that package manager (a lockfile or `packageManager`) but it isn't
+installed. Install it, or run `npx lintlane init --skip-install` and install
+`@biomejs/biome`, `lintlane` and `husky` yourself.
 
 **Push blocked: "commit message(s) don't follow Conventional Commits".** Reword
 the listed commits with `git rebase -i` (or `git commit --amend` for the latest),
@@ -568,11 +673,12 @@ scan them.
 
 **Environment variables**
 
-| Variable             | Effect                                                                            |
-| -------------------- | --------------------------------------------------------------------------------- |
-| `LINTLANE_NO_PROMPT` | Set to any value to skip the guided prompt on `git commit`.                       |
-| `CI`                 | When set, the guided prompt is skipped. The CI tab sets it for the steps it runs. |
-| `NO_COLOR`           | Turns off colors in the prompt.                                                   |
+| Variable                | Effect                                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| `LINTLANE_NO_PROMPT`    | Set to any value to skip the guided prompt on `git commit`.                                            |
+| `CI`                    | When set, the guided prompt is skipped. The CI tab sets it for the steps it runs.                      |
+| `NO_COLOR`              | Turns off colors in the prompt.                                                                        |
+| `LINTLANE_INSTALL_SPEC` | What `init` installs instead of `lintlane@<version>` (a tarball or folder), for testing a local build. |
 
 **Exit codes**
 
@@ -585,30 +691,50 @@ scan them.
 
 **Files lintlane may create or use**
 
-| Path                                                                | What                                           |
-| ------------------------------------------------------------------- | ---------------------------------------------- |
-| `biome.json`                                                        | Biome config extending a preset.               |
-| `.husky/pre-commit`, `commit-msg`, `prepare-commit-msg`, `pre-push` | Git hooks.                                     |
-| `.github/workflows/biome.yml`                                       | CI workflow.                                   |
-| `.git/lintlane-commit-msg`                                          | Your last message, kept after a failed commit. |
+| Path                                                                | What                                                                               |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `biome.json`                                                        | Biome config extending a preset.                                                   |
+| `.husky/pre-commit`, `commit-msg`, `prepare-commit-msg`, `pre-push` | Git hooks.                                                                         |
+| `.github/workflows/biome.yml`                                       | CI workflow.                                                                       |
+| `.git/lintlane-commit-msg`                                          | Your last message, kept after a failed commit.                                     |
+| `.git/lintlane-backup/`                                             | Your working copies, only while the pre-commit hook runs (or after it was killed). |
 
 ## Developing lintlane
 
-To try a local build in a test app before publishing:
+Requires Node.js 22 or newer. There are no runtime dependencies; the dev
+dependency is Biome.
+
+```sh
+npm test                  # unit + integration tests (about 15 seconds, no network)
+npm run test:e2e          # real npm / pnpm / bun installs against the registry (needs network)
+npm run check             # lint and format this repository
+```
+
+The tests use Node's built-in test runner and real temporary git repositories:
+
+| File                             | What it covers                                                                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test/pre-commit.test.mjs`       | The pre-commit hook: partial staging, failures, odd file names, interruption.                                                                                 |
+| `test/package-managers.test.mjs` | Package-manager detection and install/workflow command generation (pure).                                                                                     |
+| `test/cli.test.mjs`              | Running on Node without Bun, packaging, `init` for new and existing projects, generated hooks. Package managers are **mocked** here.                          |
+| `test/ui.test.mjs`               | The dashboard: startup, token auth, every API route, Stop killing a run.                                                                                      |
+| `test/e2e.test.mjs`              | **Real** package managers, the packed tarball and real husky. Skipped unless `LINTLANE_E2E=1`; a package manager that isn't installed is reported as skipped. |
+
+To try a local build in a throwaway app before publishing:
 
 ```sh
 # In the lintlane repo:
-npm pack --pack-destination /tmp/lintlane-pack     # builds lintlane-<version>.tgz
+npm pack --pack-destination /tmp/lintlane-pack      # builds lintlane-<version>.tgz
 
-# In a throwaway app (a git repo with a package.json):
-bun add --dev --exact @biomejs/biome husky /tmp/lintlane-pack/lintlane-<version>.tgz
-node_modules/.bin/lintlane init --skip-install      # the package isn't on npm yet
-node_modules/.bin/husky
+# In a throwaway app (a git repo with a package.json), from its directory:
+LINTLANE_INSTALL_SPEC=/tmp/lintlane-pack/lintlane-<version>.tgz \
+  npx --package=/tmp/lintlane-pack/lintlane-<version>.tgz lintlane init
 ```
 
-If you rebuild without changing the version, Bun may reuse its cached tarball:
-run `bun pm cache rm`, delete `node_modules/lintlane`, and reinstall (or
-bump the version first). `npm pack --dry-run` lists what would be published.
+`init` then installs your tarball, Biome and husky with the app's package manager
+and does everything a real run does. `npm pack --dry-run` lists what would be
+published. If you rebuild without changing the version, a package manager may
+reuse its cached tarball: bump the version, or clear the cache and reinstall.
 
 ## License
 

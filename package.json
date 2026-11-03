@@ -1,6 +1,6 @@
 {
   "name": "lintlane",
-  "version": "2.5.1",
+  "version": "3.0.0",
   "description": "Pre-push checks for React apps: shared Biome preset, local lint and CI dashboard",
   "license": "MIT",
   "type": "module",
@@ -22,7 +22,9 @@
   ],
   "scripts": {
     "check": "biome check .",
-    "check:fix": "biome check --write ."
+    "check:fix": "biome check --write .",
+    "test": "node --test \"test/*.test.mjs\"",
+    "test:e2e": "LINTLANE_E2E=1 node --test \"test/e2e.test.mjs\""
   },
   "peerDependencies": {
     "@biomejs/biome": ">=2.2.0 <3"
@@ -34,7 +36,7 @@
     "access": "public"
   },
   "engines": {
-    "bun": ">=1.2"
+    "node": ">=22"
   },
   "keywords": [
     "lintlane",

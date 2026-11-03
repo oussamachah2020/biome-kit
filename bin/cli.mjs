@@ -1,68 +1,27 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { $ } from "bun";
+import { binPath, resolveBiome, runInherit, runProcess } from "./proc.mjs";
+import {
+  detectPackageManager,
+  detectPreset,
+  hasUnsafeRestaging,
+  installCommand,
+  isLegacyPreCommit,
+  PRESET_PATHS,
+  renderWorkflow,
+  runnerCommand,
+} from "./project.mjs";
 
-const KIT_DIR = join(import.meta.dir, "..");
-const KIT_PKG = await Bun.file(join(KIT_DIR, "package.json")).json();
+const KIT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
+const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
+const KIT_PKG = await readJson(join(KIT_DIR, "package.json"));
 const KIT_NAME = KIT_PKG.name;
 const KIT_VERSION = KIT_PKG.version;
-
-const PRESET_PATHS = {
-  base: "biome",
-  strict: "biome/strict",
-  next: "biome/next",
-};
-
-const PACKAGE_MANAGERS = {
-  bun: {
-    lockfile: "bun.lock",
-    install: (pkgs) => ["bun", "add", "--dev", "--exact", ...pkgs],
-    runCheckCi: "bunx biome ci --reporter=github .",
-    setupSteps: [
-      "      - uses: oven-sh/setup-bun@v2",
-      "      - run: bun install --frozen-lockfile",
-    ],
-  },
-  npm: {
-    lockfile: "package-lock.json",
-    install: (pkgs) => ["npm", "install", "--save-dev", "--save-exact", ...pkgs],
-    runCheckCi: "npx biome ci --reporter=github .",
-    setupSteps: [
-      "      - uses: actions/setup-node@v4",
-      "        with:",
-      "          node-version: 20",
-      "          cache: npm",
-      "      - run: npm ci",
-    ],
-  },
-  pnpm: {
-    lockfile: "pnpm-lock.yaml",
-    install: (pkgs) => ["pnpm", "add", "--save-dev", "--save-exact", ...pkgs],
-    runCheckCi: "pnpm exec biome ci --reporter=github .",
-    setupSteps: [
-      "      - uses: pnpm/action-setup@v4",
-      "      - uses: actions/setup-node@v4",
-      "        with:",
-      "          node-version: 20",
-      "          cache: pnpm",
-      "      - run: pnpm install --frozen-lockfile",
-    ],
-  },
-  yarn: {
-    lockfile: "yarn.lock",
-    install: (pkgs) => ["yarn", "add", "--dev", "--exact", ...pkgs],
-    runCheckCi: "yarn biome ci --reporter=github .",
-    setupSteps: [
-      "      - uses: actions/setup-node@v4",
-      "        with:",
-      "          node-version: 20",
-      "          cache: yarn",
-      "      - run: yarn install --frozen-lockfile",
-    ],
-  },
-};
+const RUNNER = runnerCommand();
 
 const BIOME_SUBCOMMANDS = {
   check: (paths) => ["check", ...paths],
@@ -70,18 +29,7 @@ const BIOME_SUBCOMMANDS = {
   ci: (paths) => ["ci", "--reporter=github", ...paths],
 };
 
-// Checked in order; the first match wins. Only "next" has its own Biome
-// lint domain — the others are still React under the hood, so they map to
-// the "base" preset, but we name what we found instead of guessing silently.
-const FRAMEWORK_DETECTORS = [
-  { label: "Next.js", preset: "next", deps: ["next"] },
-  { label: "TanStack Start", preset: "base", deps: ["@tanstack/react-start", "@tanstack/start"] },
-  { label: "React Router (framework mode)", preset: "base", deps: ["@react-router/dev"] },
-  { label: "Remix", preset: "base", deps: ["@remix-run/react", "@remix-run/node"] },
-  { label: "React", preset: "base", deps: ["react"] },
-];
-
-const HELP = `Usage: bunx ${KIT_NAME} <command> [options]
+const HELP = `Usage: ${RUNNER} ${KIT_NAME} <command> [options]
 
 Commands:
   init [options]   Set up Biome, scripts, hooks, and CI in the current project
@@ -116,13 +64,14 @@ auto-selected — pass --preset strict explicitly when you want it.
 
 check / check:fix / ci run the Biome binary already installed in this
 project's node_modules — you never need to call biome yourself. The
-package manager (bun, npm, pnpm, or yarn) used by \`init\` is detected
-from the "packageManager" field in package.json or from whichever
-lockfile is present. Bun is used as the fallback when neither is found.
+package manager (npm, pnpm, yarn, or bun) used by \`init\` is detected from
+the "packageManager" field in package.json, then from whichever lockfile is
+present, then from the tool you launched lintlane with (npx, pnpm dlx, yarn
+dlx, bunx). npm is used when none of those apply.
 
-After \`init\` the command is installed in your project, so these run the
-local copy: \`bunx lintlane check\`, \`bunx lintlane check:fix\`,
-\`bunx lintlane ci\`, \`bunx lintlane commit\`, \`bunx lintlane ui\`.
+After \`init\` the \`lintlane\` command is installed in your project, for
+example: \`npx lintlane check\`, \`pnpm exec lintlane check\`,
+\`yarn lintlane check\`, \`bunx lintlane check\`.
 `;
 
 function fail(message) {
@@ -138,32 +87,9 @@ function warn(message) {
   console.log(`! ${message}`);
 }
 
-function detectPackageManager(cwd, pkg) {
-  const declared = pkg.packageManager?.split("@")[0];
-  if (declared && declared in PACKAGE_MANAGERS) return declared;
-  for (const [name, pm] of Object.entries(PACKAGE_MANAGERS)) {
-    if (existsSync(join(cwd, pm.lockfile))) return name;
-  }
-  return "bun";
-}
-
-function detectPreset(pkg) {
-  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-  for (const detector of FRAMEWORK_DETECTORS) {
-    if (detector.deps.some((dep) => dep in deps)) {
-      return { preset: detector.preset, label: detector.label };
-    }
-  }
-  return { preset: "base", label: null };
-}
-
-function binPath(cwd, name) {
-  return join(cwd, "node_modules", ".bin", name);
-}
-
 // Everything after a bare "--" belongs to the subcommand (e.g. `commit -- -a -S`
 // hands "-a -S" to git commit), so it never reaches our own option parsing.
-const rawArgs = Bun.argv.slice(2);
+const rawArgs = process.argv.slice(2);
 const doubleDash = rawArgs.indexOf("--");
 const ownArgs = doubleDash < 0 ? rawArgs : rawArgs.slice(0, doubleDash);
 const passthroughArgs = doubleDash < 0 ? [] : rawArgs.slice(doubleDash + 1);
@@ -195,18 +121,13 @@ if (values.help && !["commit", "c", "check-commit"].includes(command)) {
 }
 
 if (command in BIOME_SUBCOMMANDS) {
-  const biome = binPath(cwd, "biome");
-  if (!existsSync(biome)) {
-    fail(`Biome isn't installed in this project. Run: bunx ${KIT_NAME} init`);
+  const biome = resolveBiome(cwd);
+  if (!biome) {
+    fail(`Biome isn't installed in this project. Run: ${RUNNER} ${KIT_NAME} init`);
   }
   const extraPaths = positionals.slice(1);
   const biomeArgs = BIOME_SUBCOMMANDS[command](extraPaths.length ? extraPaths : ["."]);
-  try {
-    await $`${biome} ${biomeArgs}`.cwd(cwd);
-  } catch (error) {
-    process.exit(error.exitCode ?? 1);
-  }
-  process.exit(0);
+  process.exit(await runInherit(biome[0], [...biome.slice(1), ...biomeArgs], { cwd }));
 }
 
 if (command === "commit" || command === "c") {
@@ -220,28 +141,32 @@ if (command === "check-commit") {
 }
 
 if (command === "ui") {
-  const biome = binPath(cwd, "biome");
-  if (!existsSync(biome)) {
-    fail(`Biome isn't installed in this project. Run: bunx ${KIT_NAME} init`);
+  const biome = resolveBiome(cwd);
+  if (!biome) {
+    fail(`Biome isn't installed in this project. Run: ${RUNNER} ${KIT_NAME} init`);
   }
   const { startUi } = await import("./ui-server.mjs");
   const uiPkgPath = join(cwd, "package.json");
-  const uiPkg = existsSync(uiPkgPath) ? await Bun.file(uiPkgPath).json() : {};
-  await startUi({
-    cwd,
-    biome,
-    pkg: uiPkg,
-    pmName: detectPackageManager(cwd, uiPkg),
-    kitDir: KIT_DIR,
-    port: values.port === undefined ? 4321 : Number(values.port),
-    open: !values["no-open"],
-  });
+  const uiPkg = existsSync(uiPkgPath) ? await readJson(uiPkgPath) : {};
+  try {
+    await startUi({
+      cwd,
+      biome,
+      pkg: uiPkg,
+      pmName: detectPackageManager(cwd, uiPkg).name,
+      kitDir: KIT_DIR,
+      port: values.port === undefined ? 4321 : Number(values.port),
+      open: !values["no-open"],
+    });
+  } catch (error) {
+    fail(error.message);
+  }
   await new Promise(() => {});
 }
 
 if (command !== "init") {
   fail(
-    `Unknown command "${command}". Usage: bunx ${KIT_NAME} <init|check|check:fix|ci|commit|check-commit|ui> [options]`,
+    `Unknown command "${command}". Usage: ${RUNNER} ${KIT_NAME} <init|check|check:fix|ci|commit|check-commit|ui> [options]`,
   );
 }
 
@@ -256,10 +181,9 @@ if (!existsSync(pkgPath)) {
   fail("No package.json found in the current directory.");
 }
 
-let pkg = await Bun.file(pkgPath).json();
-const pmName = detectPackageManager(cwd, pkg);
-const pm = PACKAGE_MANAGERS[pmName];
-ok(`Detected package manager: ${pmName}`);
+let pkg = await readJson(pkgPath);
+const { name: pmName, source: pmSource } = detectPackageManager(cwd, pkg);
+ok(`Detected package manager: ${pmName} (${pmSource})`);
 
 let preset = values.preset;
 if (preset === undefined) {
@@ -272,23 +196,31 @@ if (preset === undefined) {
   }
 }
 
-const devPackages = ["@biomejs/biome", `${KIT_NAME}@${KIT_VERSION}`];
+// LINTLANE_INSTALL_SPEC lets you install lintlane from somewhere other than the
+// registry (a tarball from `npm pack`, a local folder) when testing a build.
+const kitSpec = process.env.LINTLANE_INSTALL_SPEC || `${KIT_NAME}@${KIT_VERSION}`;
+const devPackages = ["@biomejs/biome", kitSpec];
 if (!values["no-hooks"]) devPackages.push("husky");
-const installArgv = pm.install(devPackages);
-const installCmd = installArgv.join(" ");
+const installArgv = installCommand(pmName, devPackages);
 
 if (values["skip-install"]) {
-  warn(`Skipped install. Run: ${installCmd}`);
+  warn(`Skipped install. Run: ${installArgv.join(" ")}`);
 } else {
-  try {
-    await $`${installArgv}`.cwd(cwd).quiet();
-    ok(`Installed ${devPackages.join(", ")}`);
-    // The install just rewrote package.json (devDependencies). Re-read it, or the
-    // scripts we add below would be written over a stale copy and erase those entries.
-    pkg = await Bun.file(pkgPath).json();
-  } catch (error) {
-    fail(`Install failed: ${error.message}`);
+  const install = await runProcess(installArgv[0], installArgv.slice(1), { cwd });
+  if (install.code !== 0) {
+    const reason =
+      install.error?.code === "ENOENT"
+        ? `"${installArgv[0]}" was not found. Install it, or run again with --skip-install and install the packages yourself:\n  ${installArgv.join(" ")}`
+        : (install.stderr.toString().trim() || install.stdout.toString().trim())
+            .split("\n")
+            .slice(-8)
+            .join("\n");
+    fail(`Install failed (${installArgv.join(" ")}):\n${reason}`);
   }
+  ok(`Installed ${devPackages.join(", ")}`);
+  // The install just rewrote package.json (devDependencies). Re-read it, or the
+  // scripts we add below would be written over a stale copy and erase those entries.
+  pkg = await readJson(pkgPath);
 }
 
 const biomeJsonPath = join(cwd, "biome.json");
@@ -305,7 +237,7 @@ if (existsSync(biomeJsonPath) || existsSync(biomeJsoncPath)) {
   if (preset === "next") {
     config.files = { includes: ["**", "!**/.next", "!**/out", "!**/next-env.d.ts"] };
   }
-  await Bun.write(biomeJsonPath, `${JSON.stringify(config, null, 2)}\n`);
+  await writeFile(biomeJsonPath, `${JSON.stringify(config, null, 2)}\n`);
   ok(`Wrote biome.json (extends ${extendsSpecifier})`);
 }
 
@@ -343,7 +275,7 @@ if (!values["no-hooks"]) {
 }
 
 if (pkgChanged) {
-  await Bun.write(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  await writeFile(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
 if (!values["no-hooks"]) {
@@ -358,13 +290,29 @@ if (!values["no-hooks"]) {
 
     for (const hook of hooks) {
       const hookPath = join(huskyDir, hook);
+      const template = await readFile(join(KIT_DIR, "templates", hook), "utf8");
       if (existsSync(hookPath)) {
-        warn(`.husky/${hook} already exists — left untouched`);
+        const existing = await readFile(hookPath, "utf8");
+        if (hook === "pre-commit" && isLegacyPreCommit(existing)) {
+          // The pre-2.6 hook re-staged files with `git update-index --again`, which also
+          // stages unstaged hunks of partially staged files. It's ours and untouched, so replace it.
+          await writeFile(hookPath, template);
+          await chmod(hookPath, 0o755);
+          ok("Replaced .husky/pre-commit (the old one could stage changes you hadn't staged)");
+          wroteHook = true;
+        } else if (hook === "pre-commit" && hasUnsafeRestaging(existing)) {
+          warn(
+            ".husky/pre-commit runs `git update-index --again`, which can stage changes you didn't stage. " +
+              "Replace its contents with node_modules/lintlane/templates/pre-commit (or delete it and re-run init).",
+          );
+        } else {
+          warn(`.husky/${hook} already exists — left untouched`);
+        }
         continue;
       }
-      await $`mkdir -p ${huskyDir}`.quiet();
-      await Bun.write(hookPath, await Bun.file(join(KIT_DIR, "templates", hook)).text());
-      await $`chmod 755 ${hookPath}`.quiet();
+      await mkdir(huskyDir, { recursive: true });
+      await writeFile(hookPath, template);
+      await chmod(hookPath, 0o755);
       ok(`Wrote .husky/${hook}`);
       wroteHook = true;
     }
@@ -375,12 +323,9 @@ if (!values["no-hooks"]) {
       } else {
         const husky = binPath(cwd, "husky");
         if (existsSync(husky)) {
-          try {
-            await $`${husky}`.cwd(cwd).quiet();
-            ok("Ran husky");
-          } catch (error) {
-            warn(`husky failed: ${error.message}`);
-          }
+          const ran = await runProcess(husky, [], { cwd });
+          if (ran.code === 0) ok("Ran husky");
+          else warn(`husky failed: ${(ran.stderr.toString() || ran.error?.message || "").trim()}`);
         } else {
           warn(`husky binary not found at ${husky} — run it manually once installed`);
         }
@@ -395,35 +340,9 @@ if (!values["no-ci"]) {
   if (existsSync(ciPath)) {
     warn(".github/workflows/biome.yml already exists — left untouched");
   } else {
-    // Catches commits that skipped the local hooks (--no-verify, GUI clients, fresh clones).
     const withCommitCheck = !values["no-commit-lint"] && !values["no-hooks"];
-    const commitCheckCheckout = withCommitCheck ? "\n        with:\n          fetch-depth: 0" : "";
-    const commitCheckStep = withCommitCheck
-      ? [
-          "",
-          "      - name: Check commit messages",
-          "        if: github.event_name == 'pull_request'",
-          "        run: node node_modules/lintlane/bin/check-commit.mjs --rev-range origin/${{ github.base_ref }}..HEAD",
-        ].join("\n")
-      : "";
-    const workflow = `name: Biome
-
-on:
-  pull_request:
-  push:
-    branches:
-      - main
-
-jobs:
-  biome:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4${commitCheckCheckout}
-${pm.setupSteps.join("\n")}${commitCheckStep}
-      - run: ${pm.runCheckCi}
-`;
-    await $`mkdir -p ${workflowsDir}`.quiet();
-    await Bun.write(ciPath, workflow);
+    await mkdir(workflowsDir, { recursive: true });
+    await writeFile(ciPath, renderWorkflow({ pmName, kitName: KIT_NAME, withCommitCheck }));
     ok("Wrote .github/workflows/biome.yml");
   }
 }
