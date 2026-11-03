@@ -98,7 +98,7 @@ export async function startUi({ cwd, biome, kitDir, port, open, pmName, pkg }) {
 
       if (req.method === "GET" && url.pathname === "/") {
         if (url.searchParams.get("t") !== token) {
-          return new Response("Forbidden: open the URL printed by `preflight ui`.", {
+          return new Response("Forbidden: open the URL printed by `lintlane ui`.", {
             status: 403,
           });
         }
@@ -108,7 +108,7 @@ export async function startUi({ cwd, biome, kitDir, port, open, pmName, pkg }) {
       }
 
       if (url.pathname.startsWith("/api/")) {
-        if (req.headers.get("x-preflight-token") !== token) {
+        if (req.headers.get("x-lintlane-token") !== token) {
           return Response.json({ error: "Unauthorized" }, { status: 401 });
         }
         try {
@@ -171,7 +171,7 @@ export async function startUi({ cwd, biome, kitDir, port, open, pmName, pkg }) {
   });
 
   const address = `http://127.0.0.1:${server.port}/?t=${token}`;
-  console.log(`✔ Preflight dashboard running at ${address}`);
+  console.log(`✔ Lintlane dashboard running at ${address}`);
   console.log("  Press Ctrl+C to stop.");
 
   if (open) {

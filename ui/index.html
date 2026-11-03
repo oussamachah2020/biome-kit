@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Preflight</title>
+<title>Lintlane</title>
 <script>
   try {
-    const saved = localStorage.getItem("preflight-theme");
+    const saved = localStorage.getItem("lintlane-theme");
     if (saved === "light" || saved === "dark") document.documentElement.dataset.theme = saved;
   } catch {}
 </script>
@@ -129,7 +129,7 @@
 </head>
 <body>
 <header>
-  <h1>Preflight</h1>
+  <h1>Lintlane</h1>
   <nav class="tabs">
     <button type="button" class="tab" data-view="lint" aria-current="page">Lint</button>
     <button type="button" class="tab" data-view="ci">CI</button>
@@ -186,7 +186,7 @@ let level = "all";
 async function api(path, body) {
   const res = await fetch(path, {
     method: "POST",
-    headers: { "content-type": "application/json", "x-preflight-token": TOKEN },
+    headers: { "content-type": "application/json", "x-lintlane-token": TOKEN },
     body: JSON.stringify(body ?? {}),
   });
   const data = await res.json();
@@ -445,7 +445,7 @@ function paintTheme() {
 themeBtn.addEventListener("click", () => {
   const next = isDark() ? "light" : "dark";
   document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("preflight-theme", next); } catch {}
+  try { localStorage.setItem("lintlane-theme", next); } catch {}
   paintTheme();
 });
 systemDark.addEventListener("change", paintTheme);
@@ -586,7 +586,7 @@ async function ciStart() {
   try {
     const res = await fetch("/api/ci/run", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-preflight-token": TOKEN },
+      headers: { "content-type": "application/json", "x-lintlane-token": TOKEN },
       body: JSON.stringify({ steps: ids, stopOnFail: $("#ciStop").checked }),
       signal: ctrl.signal,
     });

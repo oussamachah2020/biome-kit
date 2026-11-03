@@ -34,7 +34,7 @@ const HEADER = /^([a-z]+)(?:\(([^()]+)\))?(!)?: (.*)$/;
 const LOOSE_HEADER = /^([A-Za-z]+)(?:\(([^()]*)\))?(!)?:/;
 
 /**
- * Merge user options (from package.json "preflight".commit or CLI flags) over
+ * Merge user options (from package.json "lintlane".commit or CLI flags) over
  * the defaults. `types` may be a list of names, [name, description] pairs, or
  * an object of { name: description }. A max header of 0 turns the limit off.
  */
@@ -136,7 +136,7 @@ export function explainFailure(errors, options) {
     `  Example:  ${EXAMPLE}`,
     `  Types:    ${types.map(([type]) => type).join(", ")}`,
     "",
-    "  Not sure? Run the guided prompt:  npx preflight commit",
+    "  Not sure? Run the guided prompt:  npx lintlane commit",
     "  (or just `git commit` with no -m, and you'll be asked step by step)",
     "",
   ].join("\n");

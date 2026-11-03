@@ -1,4 +1,4 @@
-# preflight-kit
+# lintlane
 
 Pre-push checks for React apps. One command sets up a shared
 [Biome](https://biomejs.dev) lint/format preset, git hooks, a Conventional
@@ -12,7 +12,7 @@ checks your CI will run — and see exactly what would fail — before you push.
 - Conventional Commits, enforced and guided: a step-by-step prompt, a
   commit-message check, a pre-push check and a CI check.
 - A GitHub Actions workflow running `biome ci`.
-- `preflight ui`: a local dashboard with a Lint tab (errors and fixes as a
+- `lintlane ui`: a local dashboard with a Lint tab (errors and fixes as a
   diff) and a CI tab (lint, typecheck, build and tests run locally).
 
 ## Contents
@@ -33,46 +33,45 @@ checks your CI will run — and see exactly what would fail — before you push.
 - [Manual setup (without the CLI)](#manual-setup-without-the-cli)
 - [Troubleshooting](#troubleshooting)
 - [Reference](#reference)
-- [Developing the kit](#developing-the-kit)
+- [Developing lintlane](#developing-lintlane)
 
 ## Quick start
 
 ```sh
 # 1. In your React project (a git repository with a package.json):
-bunx preflight-kit init
+bunx lintlane init
 
 # 2. Fix what Biome can fix, see what's left:
-bunx preflight check:fix
-bunx preflight check
+bunx lintlane check:fix
+bunx lintlane check
 
 # 3. Open the dashboard to review issues and run your CI checks locally:
-bunx preflight ui
+bunx lintlane ui
 ```
 
 From then on, `git commit` is guided and checked, and every push is checked
 before it leaves your machine.
 
-> Use the **package name** `preflight-kit` for the very first `init`. After
-> that the project has the **`preflight`** command (`preflight-kit` also works as
-> a command name). Don't run `bunx preflight` before installing: that name on npm
-> belongs to an unrelated package.
+> The first `bunx lintlane init` downloads the package. After that it's
+> installed in your project, so `bunx lintlane …` (or `npx lintlane …`,
+> `bun run lintlane …`) runs your local copy without touching the network.
 
 ## Commands at a glance
 
-| Command                                          | What it does                                                    |
-| ------------------------------------------------ | --------------------------------------------------------------- |
-| `preflight-kit init [flags]`                     | One-time setup: installs, writes config, scripts, hooks and CI. |
-| `preflight check [paths]`                        | Run `biome check` (lint + format), no changes.                  |
-| `preflight check:fix [paths]`                    | Run `biome check --write`: apply safe fixes.                    |
-| `preflight ci [paths]`                           | Run `biome ci --reporter=github` (what CI runs).                |
-| `preflight commit [flags] [-- <git args>]`       | Guided Conventional Commit (alias `c`).                         |
-| `preflight check-commit [flags]`                 | Validate commit messages (a message, a file or a git range).    |
-| `preflight ui [flags]`                           | Open the local dashboard (Lint + CI tabs).                      |
-| `preflight -h` / `commit -h` / `check-commit -h` | Show help.                                                      |
+| Command                                         | What it does                                                    |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| `lintlane init [flags]`                         | One-time setup: installs, writes config, scripts, hooks and CI. |
+| `lintlane check [paths]`                        | Run `biome check` (lint + format), no changes.                  |
+| `lintlane check:fix [paths]`                    | Run `biome check --write`: apply safe fixes.                    |
+| `lintlane ci [paths]`                           | Run `biome ci --reporter=github` (what CI runs).                |
+| `lintlane commit [flags] [-- <git args>]`       | Guided Conventional Commit (alias `c`).                         |
+| `lintlane check-commit [flags]`                 | Validate commit messages (a message, a file or a git range).    |
+| `lintlane ui [flags]`                           | Open the local dashboard (Lint + CI tabs).                      |
+| `lintlane -h` / `commit -h` / `check-commit -h` | Show help.                                                      |
 
 Every command except `init` runs from the project root. Examples below use
-`bunx preflight …`; if you've installed the kit, `bun run preflight …`,
-`npx preflight …` or `node_modules/.bin/preflight …` work too.
+`bunx lintlane …`; if you've installed it, `bun run lintlane …`,
+`npx lintlane …` or `node_modules/.bin/lintlane …` work too.
 
 ## Requirements
 
@@ -86,15 +85,15 @@ Every command except `init` runs from the project root. Examples below use
 - **Git**, for the commit workflow.
 - **macOS or Linux** for the guided prompt on a plain `git commit` (it reads the
   terminal through `/dev/tty`). Elsewhere that prompt is skipped; messages are
-  still validated, and `preflight commit` still works. Not tested on Windows.
+  still validated, and `lintlane commit` still works. Not tested on Windows.
 
 ## `init` — one-time project setup
 
 ```sh
-bunx preflight-kit init
+bunx lintlane init
 ```
 
-`init` installs `@biomejs/biome`, `preflight-kit` and (unless `--no-hooks`)
+`init` installs `@biomejs/biome`, `lintlane` and (unless `--no-hooks`)
 `husky`, then writes:
 
 | File / change                 | Purpose                                                           |
@@ -119,12 +118,12 @@ bunx preflight-kit init
 | `-h`, `--help`     | Show usage.                                                             |
 
 ```sh
-bunx preflight-kit init                                   # everything, preset auto-detected
-bunx preflight-kit init --preset strict                   # force a preset
-bunx preflight-kit init --no-commit-lint                  # lint hook only, no commit rules
-bunx preflight-kit init --no-hooks --no-ci                # just biome.json and scripts
-bunx preflight-kit init --skip-install                    # you install packages yourself
-bunx preflight-kit init --preset next --no-ci
+bunx lintlane init                                   # everything, preset auto-detected
+bunx lintlane init --preset strict                   # force a preset
+bunx lintlane init --no-commit-lint                  # lint hook only, no commit rules
+bunx lintlane init --no-hooks --no-ci                # just biome.json and scripts
+bunx lintlane init --skip-install                    # you install packages yourself
+bunx lintlane init --preset next --no-ci
 ```
 
 ### Preset auto-detection
@@ -164,13 +163,13 @@ These wrap the Biome binary installed in your project, so you never need
 Biome's own flags:
 
 ```sh
-bunx preflight check            # biome check .                      (read-only)
-bunx preflight check:fix        # biome check --write .              (applies safe fixes)
-bunx preflight ci               # biome ci --reporter=github .       (CI-formatted output)
+bunx lintlane check            # biome check .                      (read-only)
+bunx lintlane check:fix        # biome check --write .              (applies safe fixes)
+bunx lintlane ci               # biome ci --reporter=github .       (CI-formatted output)
 
-bunx preflight check src/                       # limit to paths
-bunx preflight check:fix src/components/Button.tsx
-bunx preflight ci src/ tests/
+bunx lintlane check src/                       # limit to paths
+bunx lintlane check:fix src/components/Button.tsx
+bunx lintlane ci src/ tests/
 ```
 
 The exit code is Biome's, so they work in scripts and CI. If Biome isn't
@@ -192,7 +191,7 @@ npm run check:fix
 and release tooling. The `commit` and `check-commit` commands and flags follow
 [Commitizen](https://commitizen-tools.github.io/commitizen/) where they overlap
 (`check-commit` is Commitizen's `cz check`; it isn't called `check` because
-`preflight check` runs Biome).
+`lintlane check` runs Biome).
 
 **The format**
 
@@ -218,7 +217,7 @@ BREAKING CHANGE: what breaks and how to migrate
 
 ```sh
 git add <files>
-bunx preflight commit        # alias: bunx preflight c
+bunx lintlane commit        # alias: bunx lintlane c
 ```
 
 Asks seven questions — **type, scope, subject, body, breaking change, footer,
@@ -238,19 +237,19 @@ period, an over-long header) are explained and asked again.
 | `-- <git args>`                  | Everything after `--` is passed to `git commit`.                     |
 
 ```sh
-bunx preflight commit                    # ask, then commit the staged changes
-bunx preflight commit -- -a              # stage all tracked changes, then commit
-bunx preflight commit -- -a -S           # …and sign the commit
-bunx preflight commit -- -s              # add a Signed-off-by line
-bunx preflight commit -- -n              # skip git hooks
-bunx preflight commit --dry-run          # just print the message
-bunx preflight commit --dry-run --write-message-to-file msg.txt
-bunx preflight commit -l 72              # stricter header limit for this commit
+bunx lintlane commit                    # ask, then commit the staged changes
+bunx lintlane commit -- -a              # stage all tracked changes, then commit
+bunx lintlane commit -- -a -S           # …and sign the commit
+bunx lintlane commit -- -s              # add a Signed-off-by line
+bunx lintlane commit -- -n              # skip git hooks
+bunx lintlane commit --dry-run          # just print the message
+bunx lintlane commit --dry-run --write-message-to-file msg.txt
+bunx lintlane commit -l 72              # stricter header limit for this commit
 ```
 
 **Retrying after a failed commit.** If a hook (for example Biome in pre-commit)
 rejects the commit after you've answered the questions, the message is kept.
-Fix the problem, stage the fix, then run `bunx preflight commit --retry` — no
+Fix the problem, stage the fix, then run `bunx lintlane commit --retry` — no
 re-typing. The saved message is cleared once a commit succeeds. Set
 `retryAfterFailure` (see [Settings](#settings)) to reuse it automatically.
 
@@ -259,11 +258,11 @@ re-typing. The saved message is cleared once a commit succeeds. Set
 Give it exactly one thing to check:
 
 ```sh
-bunx preflight check-commit --message "feat: add login"          # a message
-echo "feat: add login" | bunx preflight check-commit             # …or from stdin
-bunx preflight check-commit --commit-msg-file .git/COMMIT_EDITMSG
-bunx preflight check-commit --rev-range origin/main..HEAD        # every commit in a range
-bunx preflight check-commit -d                                   # shorthand for <default branch>..HEAD
+bunx lintlane check-commit --message "feat: add login"          # a message
+echo "feat: add login" | bunx lintlane check-commit             # …or from stdin
+bunx lintlane check-commit --commit-msg-file .git/COMMIT_EDITMSG
+bunx lintlane check-commit --rev-range origin/main..HEAD        # every commit in a range
+bunx lintlane check-commit -d                                   # shorthand for <default branch>..HEAD
 ```
 
 | Flag                           | Effect                                                |
@@ -307,7 +306,7 @@ Notes:
 - On a plain `git commit` the prompt's answer pre-fills your editor, and the
   message is validated again afterwards. `git commit --amend`, `-m` and `-F`
   skip the prompt but not the validation.
-- The prompt steps aside in CI, when `PREFLIGHT_NO_PROMPT` is set, and
+- The prompt steps aside in CI, when `LINTLANE_NO_PROMPT` is set, and
   whenever there's no terminal (editors and GUI clients that commit for you).
 - Hooks run only once git hooks are installed. `init` does this, and teammates
   get them from `install` through the `prepare` script (`husky`).
@@ -320,7 +319,7 @@ Optional, in your `package.json`:
 
 ```json
 {
-  "preflight": {
+  "lintlane": {
     "commit": {
       "types": ["feat", "fix", "chore"],
       "messageLengthLimit": 72,
@@ -347,7 +346,7 @@ override them for that run.
 | ------------------------- | ----------------------------------------------------------------------- |
 | The commit hooks, once    | `git commit --no-verify` (the pre-push hook and CI still check it).     |
 | The pre-push check, once  | `git push --no-verify` (CI still checks pull requests).                 |
-| Only the guided prompt    | Set `PREFLIGHT_NO_PROMPT=1`.                                            |
+| Only the guided prompt    | Set `LINTLANE_NO_PROMPT=1`.                                             |
 | Commit rules for everyone | Re-run `init --no-commit-lint` on a fresh project, or delete the hooks. |
 
 ### Adding the CI step to an existing workflow
@@ -362,18 +361,18 @@ it to one you already have:
 # …after your install step:
 - name: Check commit messages
   if: github.event_name == 'pull_request'
-  run: node node_modules/preflight-kit/bin/check-commit.mjs --rev-range origin/${{ github.base_ref }}..HEAD
+  run: node node_modules/lintlane/bin/check-commit.mjs --rev-range origin/${{ github.base_ref }}..HEAD
 ```
 
 ## Dashboard (`ui`)
 
-`preflight ui` starts a local dashboard in your browser so you can see what
+`lintlane ui` starts a local dashboard in your browser so you can see what
 would fail before you push:
 
 ```sh
-bunx preflight ui              # opens http://127.0.0.1:4321
-bunx preflight ui --port 5000  # use another port
-bunx preflight ui --no-open    # print the URL without opening a browser
+bunx lintlane ui              # opens http://127.0.0.1:4321
+bunx lintlane ui --port 5000  # use another port
+bunx lintlane ui --no-open    # print the URL without opening a browser
 ```
 
 | Flag         | Effect                                |
@@ -440,19 +439,19 @@ commands run and refuses paths outside the project.
 
 ## Presets
 
-| Name                         | Extends path            | Use case                                                                                         |
-| ---------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| `preflight-kit/biome`        | `./presets/base.json`   | Default: recommended rules + React domain, warns on unused code/console.                         |
-| `preflight-kit/biome/strict` | `./presets/strict.json` | Base rules raised to errors (unused code, `any`, non-null assertions, console, exhaustive deps). |
-| `preflight-kit/biome/next`   | `./presets/next.json`   | Base preset plus the Next.js lint domain.                                                        |
+| Name                    | Extends path            | Use case                                                                                         |
+| ----------------------- | ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `lintlane/biome`        | `./presets/base.json`   | Default: recommended rules + React domain, warns on unused code/console.                         |
+| `lintlane/biome/strict` | `./presets/strict.json` | Base rules raised to errors (unused code, `any`, non-null assertions, console, exhaustive deps). |
+| `lintlane/biome/next`   | `./presets/next.json`   | Base preset plus the Next.js lint domain.                                                        |
 
 Presets intentionally don't set `files.includes` — setting it in your own
-`biome.json` would _replace_ the kit's, not merge with it. For Next.js apps,
+`biome.json` would _replace_ lintlane's, not merge with it. For Next.js apps,
 add your own ignores:
 
 ```json
 {
-  "extends": ["preflight-kit/biome/next"],
+  "extends": ["lintlane/biome/next"],
   "files": { "includes": ["**", "!**/.next", "!**/out", "!**/next-env.d.ts"] }
 }
 ```
@@ -469,19 +468,19 @@ bunx biome migrate prettier --write
 **Install and configure**
 
 ```sh
-bun add -d -E @biomejs/biome preflight-kit
-npm install --save-dev --save-exact @biomejs/biome preflight-kit
-pnpm add --save-dev --save-exact @biomejs/biome preflight-kit
-yarn add --dev --exact @biomejs/biome preflight-kit
+bun add -d -E @biomejs/biome lintlane
+npm install --save-dev --save-exact @biomejs/biome lintlane
+pnpm add --save-dev --save-exact @biomejs/biome lintlane
+yarn add --dev --exact @biomejs/biome lintlane
 ```
 
 Create `biome.json`, extending the preset you want:
 
 ```json
-{ "extends": ["preflight-kit/biome"] }
+{ "extends": ["lintlane/biome"] }
 ```
 
-(`preflight-kit/biome/strict` or `preflight-kit/biome/next` for the others.)
+(`lintlane/biome/strict` or `lintlane/biome/next` for the others.)
 Add scripts:
 
 ```json
@@ -508,46 +507,47 @@ git update-index --again
 `.husky/commit-msg`
 
 ```sh
-[ -f node_modules/preflight-kit/bin/commit-msg.mjs ] || exit 0
-node node_modules/preflight-kit/bin/commit-msg.mjs "$1"
+[ -f node_modules/lintlane/bin/commit-msg.mjs ] || exit 0
+node node_modules/lintlane/bin/commit-msg.mjs "$1"
 ```
 
 `.husky/prepare-commit-msg`
 
 ```sh
-[ -f node_modules/preflight-kit/bin/prepare-commit-msg.mjs ] || exit 0
-node node_modules/preflight-kit/bin/prepare-commit-msg.mjs "$1" "$2"
+[ -f node_modules/lintlane/bin/prepare-commit-msg.mjs ] || exit 0
+node node_modules/lintlane/bin/prepare-commit-msg.mjs "$1" "$2"
 ```
 
 `.husky/pre-push`
 
 ```sh
-[ -f node_modules/preflight-kit/bin/pre-push-check.mjs ] || exit 0
-node node_modules/preflight-kit/bin/pre-push-check.mjs "$1" "$2"
+[ -f node_modules/lintlane/bin/pre-push-check.mjs ] || exit 0
+node node_modules/lintlane/bin/pre-push-check.mjs "$1" "$2"
 ```
 
 Commits with errors Biome can't fix are blocked until you resolve them.
 
 ## Troubleshooting
 
-**`bunx preflight …` downloads something strange / "command not found".**
-Before the kit is installed, `bunx preflight` resolves to an unrelated npm
-package. Install first with `bunx preflight-kit init`.
+**`bunx lintlane …` downloads the package each time, or says "command not found".**
+Outside a project that has it installed, `bunx` fetches `lintlane` from npm.
+Run `bunx lintlane init` in the project first (or install `lintlane` as a dev
+dependency), after which `bunx lintlane …` uses the local copy.
 
 **Hooks don't run.** Run your package manager's install (the `prepare` script
 runs husky), or run `node_modules/.bin/husky` once. Check
 `git config core.hooksPath` prints `.husky/_`.
 
 **The guided prompt doesn't appear on `git commit`.** It's skipped when `CI` or
-`PREFLIGHT_NO_PROMPT` is set, when you pass `-m`/`-F` or amend, when there's no
+`LINTLANE_NO_PROMPT` is set, when you pass `-m`/`-F` or amend, when there's no
 terminal (GUI clients, some editors) and on systems without `/dev/tty`. Run
-`bunx preflight commit` for the same steps. The message is validated regardless.
+`bunx lintlane commit` for the same steps. The message is validated regardless.
 
 **A commit was rejected and I lost my message.** Use
-`bunx preflight commit --retry` if you committed through `preflight commit`.
+`bunx lintlane commit --retry` if you committed through `lintlane commit`.
 
 **The pre-commit hook blocks my commit.** Biome found an error it can't fix.
-Run `bunx preflight check` to see it, or open `bunx preflight ui`. Fix it and
+Run `bunx lintlane check` to see it, or open `bunx lintlane ui`. Fix it and
 commit again.
 
 **Push blocked: "commit message(s) don't follow Conventional Commits".** Reword
@@ -555,10 +555,10 @@ the listed commits with `git rebase -i` (or `git commit --amend` for the latest)
 then push again.
 
 **`init` says a file already exists.** That's expected; `init` never overwrites.
-Delete the file and re-run `init` if you want the kit's version.
+Delete the file and re-run `init` if you want lintlane's version.
 
 **The dashboard shows "Unauthorized" / 403.** Open the exact URL printed when
-`preflight ui` started; it contains a one-time token.
+`lintlane ui` started; it contains a one-time token.
 
 **Biome seems slow on a big project.** Add ignores for build output in your
 `biome.json` (for example `dist`, `.next`, `build`, `coverage`) so Biome doesn't
@@ -568,11 +568,11 @@ scan them.
 
 **Environment variables**
 
-| Variable              | Effect                                                                            |
-| --------------------- | --------------------------------------------------------------------------------- |
-| `PREFLIGHT_NO_PROMPT` | Set to any value to skip the guided prompt on `git commit`.                       |
-| `CI`                  | When set, the guided prompt is skipped. The CI tab sets it for the steps it runs. |
-| `NO_COLOR`            | Turns off colors in the prompt.                                                   |
+| Variable             | Effect                                                                            |
+| -------------------- | --------------------------------------------------------------------------------- |
+| `LINTLANE_NO_PROMPT` | Set to any value to skip the guided prompt on `git commit`.                       |
+| `CI`                 | When set, the guided prompt is skipped. The CI tab sets it for the steps it runs. |
+| `NO_COLOR`           | Turns off colors in the prompt.                                                   |
 
 **Exit codes**
 
@@ -583,31 +583,31 @@ scan them.
 | `check-commit`             | `0` valid, `1` rejected, `2` usage or git error.                                                    |
 | `ui`                       | Runs until you stop it.                                                                             |
 
-**Files the kit may create or use**
+**Files lintlane may create or use**
 
 | Path                                                                | What                                           |
 | ------------------------------------------------------------------- | ---------------------------------------------- |
 | `biome.json`                                                        | Biome config extending a preset.               |
 | `.husky/pre-commit`, `commit-msg`, `prepare-commit-msg`, `pre-push` | Git hooks.                                     |
 | `.github/workflows/biome.yml`                                       | CI workflow.                                   |
-| `.git/preflight-commit-msg`                                         | Your last message, kept after a failed commit. |
+| `.git/lintlane-commit-msg`                                          | Your last message, kept after a failed commit. |
 
-## Developing the kit
+## Developing lintlane
 
 To try a local build in a test app before publishing:
 
 ```sh
-# In the kit repo:
-npm pack --pack-destination /tmp/preflight-pack     # builds preflight-kit-<version>.tgz
+# In the lintlane repo:
+npm pack --pack-destination /tmp/lintlane-pack     # builds lintlane-<version>.tgz
 
 # In a throwaway app (a git repo with a package.json):
-bun add --dev --exact @biomejs/biome husky /tmp/preflight-pack/preflight-kit-<version>.tgz
-node_modules/.bin/preflight init --skip-install      # the package isn't on npm yet
+bun add --dev --exact @biomejs/biome husky /tmp/lintlane-pack/lintlane-<version>.tgz
+node_modules/.bin/lintlane init --skip-install      # the package isn't on npm yet
 node_modules/.bin/husky
 ```
 
 If you rebuild without changing the version, Bun may reuse its cached tarball:
-run `bun pm cache rm`, delete `node_modules/preflight-kit`, and reinstall (or
+run `bun pm cache rm`, delete `node_modules/lintlane`, and reinstall (or
 bump the version first). `npm pack --dry-run` lists what would be published.
 
 ## License

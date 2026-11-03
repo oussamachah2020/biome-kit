@@ -1,6 +1,6 @@
-// `preflight commit` — guided Conventional Commit (Commitizen's `cz commit`).
+// `lintlane commit` — guided Conventional Commit (Commitizen's `cz commit`).
 //
-//   preflight commit [options] [-- <git commit args>]
+//   lintlane commit [options] [-- <git commit args>]
 //
 //   --dry-run                      show the message, don't commit
 //   --write-message-to-file <file> write the message to a file
@@ -15,9 +15,9 @@ import { parseArgs } from "node:util";
 import { loadCommitConfig } from "./commit-config.mjs";
 import { promptCommit } from "./commit-prompt.mjs";
 
-export const COMMIT_HELP = `Usage: preflight commit [options] [-- <git commit args>]
+export const COMMIT_HELP = `Usage: lintlane commit [options] [-- <git commit args>]
 
-Asks a few questions and creates a Conventional Commit. Alias: preflight c
+Asks a few questions and creates a Conventional Commit. Alias: lintlane c
 
 Options:
   --dry-run                       Show the message without committing
@@ -27,9 +27,9 @@ Options:
   -l, --message-length-limit <n>  Maximum header length (0 = no limit)
 
 Anything after -- is passed to git commit:
-  preflight commit -- -a -S       stage all tracked changes and sign the commit
-  preflight commit -- -n          skip git hooks
-  preflight commit -- -s          add a Signed-off-by line
+  lintlane commit -- -a -S       stage all tracked changes and sign the commit
+  lintlane commit -- -n          skip git hooks
+  lintlane commit -- -s          add a Signed-off-by line
 `;
 
 const err = (text) => process.stderr.write(`${text}\n`);
@@ -82,14 +82,14 @@ export async function runCommit({ argv, gitArgs = [], cwd = process.cwd() }) {
   const stagesItself = gitArgs.some((a) => a === "-a" || a === "--all");
   if (!dryRun && !stagesItself && git(["diff", "--cached", "--quiet"], cwd).status === 0) {
     err(
-      "✘ Nothing is staged. Stage your changes first (git add <files>), or use: preflight commit -- -a",
+      "✘ Nothing is staged. Stage your changes first (git add <files>), or use: lintlane commit -- -a",
     );
     return 1;
   }
 
   const savedPath = resolve(
     cwd,
-    git(["rev-parse", "--git-path", "preflight-commit-msg"], cwd).stdout.trim(),
+    git(["rev-parse", "--git-path", "lintlane-commit-msg"], cwd).stdout.trim(),
   );
   const saved = existsSync(savedPath) ? readFileSync(savedPath, "utf8") : null;
 
@@ -142,7 +142,7 @@ export async function runCommit({ argv, gitArgs = [], cwd = process.cwd() }) {
     return 0;
   }
   err(
-    "\n✘ git commit failed. Your message was saved — fix the problem, then run:  preflight commit --retry",
+    "\n✘ git commit failed. Your message was saved — fix the problem, then run:  lintlane commit --retry",
   );
   return result.status ?? 1;
 }

@@ -1,2 +1,2 @@
-[ -f node_modules/preflight-kit/bin/pre-push-check.mjs ] || exit 0
-node node_modules/preflight-kit/bin/pre-push-check.mjs "$1" "$2"
+[ -f node_modules/lintlane/bin/pre-push-check.mjs ] || exit 0
+node node_modules/lintlane/bin/pre-push-check.mjs "$1" "$2"

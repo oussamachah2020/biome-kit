@@ -120,9 +120,9 @@ package manager (bun, npm, pnpm, or yarn) used by \`init\` is detected
 from the "packageManager" field in package.json or from whichever
 lockfile is present. Bun is used as the fallback when neither is found.
 
-Once installed (after \`init\`), use the short \`preflight\` command for
-everything except the first install: \`bunx preflight check\`, \`bunx preflight
-check:fix\`, \`bunx preflight ci\`.
+After \`init\` the command is installed in your project, so these run the
+local copy: \`bunx lintlane check\`, \`bunx lintlane check:fix\`,
+\`bunx lintlane ci\`, \`bunx lintlane commit\`, \`bunx lintlane ui\`.
 `;
 
 function fail(message) {
@@ -256,7 +256,7 @@ if (!existsSync(pkgPath)) {
   fail("No package.json found in the current directory.");
 }
 
-const pkg = await Bun.file(pkgPath).json();
+let pkg = await Bun.file(pkgPath).json();
 const pmName = detectPackageManager(cwd, pkg);
 const pm = PACKAGE_MANAGERS[pmName];
 ok(`Detected package manager: ${pmName}`);
@@ -283,6 +283,9 @@ if (values["skip-install"]) {
   try {
     await $`${installArgv}`.cwd(cwd).quiet();
     ok(`Installed ${devPackages.join(", ")}`);
+    // The install just rewrote package.json (devDependencies). Re-read it, or the
+    // scripts we add below would be written over a stale copy and erase those entries.
+    pkg = await Bun.file(pkgPath).json();
   } catch (error) {
     fail(`Install failed: ${error.message}`);
   }
@@ -400,7 +403,7 @@ if (!values["no-ci"]) {
           "",
           "      - name: Check commit messages",
           "        if: github.event_name == 'pull_request'",
-          "        run: node node_modules/preflight-kit/bin/check-commit.mjs --rev-range origin/${{ github.base_ref }}..HEAD",
+          "        run: node node_modules/lintlane/bin/check-commit.mjs --rev-range origin/${{ github.base_ref }}..HEAD",
         ].join("\n")
       : "";
     const workflow = `name: Biome

@@ -1,4 +1,4 @@
-// `preflight check-commit` — validate commit messages (Commitizen's `cz check`).
+// `lintlane check-commit` — validate commit messages (Commitizen's `cz check`).
 // Plain Node on purpose: it also runs in CI and in the pre-push hook.
 //
 //   --message "<msg>"            check a string (or pipe it in on stdin)
@@ -15,10 +15,10 @@ import { parseArgs } from "node:util";
 import { loadCommitConfig } from "./commit-config.mjs";
 import { cleanMessage, explainFailure, validateMessage } from "./commit-lint.mjs";
 
-const HELP = `Usage: preflight check-commit [options]
+const HELP = `Usage: lintlane check-commit [options]
 
 Checks that commit messages follow Conventional Commits. Give exactly one of:
-  --message <msg>            a message (or pipe one in: echo "feat: x" | preflight check-commit)
+  --message <msg>            a message (or pipe one in: echo "feat: x" | lintlane check-commit)
   --commit-msg-file <path>   a file containing the message
   --rev-range <range>        every commit in a range, e.g. origin/main..HEAD
   -d, --use-default-range    shorthand for <default branch>..HEAD

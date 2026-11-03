@@ -1,6 +1,6 @@
 // Reads the optional commit settings from the project's package.json:
 //
-//   "preflight": {
+//   "lintlane": {
 //     "commit": {
 //       "types": ["feat", "fix", "chore"],
 //       "messageLengthLimit": 72,
@@ -16,7 +16,7 @@ import { join } from "node:path";
 export function loadCommitConfig(cwd = process.cwd()) {
   try {
     const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
-    const commit = pkg?.preflight?.commit;
+    const commit = pkg?.lintlane?.commit;
     return commit && typeof commit === "object" ? commit : {};
   } catch {
     return {};

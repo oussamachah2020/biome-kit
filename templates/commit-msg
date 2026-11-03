@@ -1,2 +1,2 @@
-[ -f node_modules/preflight-kit/bin/commit-msg.mjs ] || exit 0
-node node_modules/preflight-kit/bin/commit-msg.mjs "$1"
+[ -f node_modules/lintlane/bin/commit-msg.mjs ] || exit 0
+node node_modules/lintlane/bin/commit-msg.mjs "$1"

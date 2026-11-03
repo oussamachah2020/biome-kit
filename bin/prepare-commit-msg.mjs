@@ -1,6 +1,6 @@
 // git `prepare-commit-msg` hook entry: when you run a plain `git commit` (no -m,
 // no template, not a merge), walk through the guided prompt and pre-fill the
-// message — the same flow as `preflight commit`.
+// message — the same flow as `lintlane commit`.
 // Plain Node on purpose — see commit-lint.mjs.
 import { closeSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { ReadStream } from "node:tty";
@@ -11,7 +11,7 @@ const [file, source] = process.argv.slice(2);
 
 // source is set when the message came from -m/-F, a template, a merge, a
 // squash, or an amend. Only a plain `git commit` leaves it empty.
-if (!file || source || process.env.CI || process.env.PREFLIGHT_NO_PROMPT) process.exit(0);
+if (!file || source || process.env.CI || process.env.LINTLANE_NO_PROMPT) process.exit(0);
 
 // Git runs hooks with stdin detached; talk to the terminal directly. If there
 // isn't one (a GUI client, CI, a script), stay out of the way.
